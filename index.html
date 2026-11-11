@@ -84,6 +84,13 @@
   .tdm:not(:disabled):hover { border-color: var(--gold); }
   .tdm.sel { border-color: var(--gold); background: #2e2620; }
   .tdm:disabled { opacity: .45; cursor: not-allowed; }
+  .tds { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
+    font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .tds small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
+  .tds small.d { color: var(--muted); margin-top: 2px; }
+  .tds:not(:disabled):hover { border-color: var(--gold); }
+  .tds.sel { border-color: var(--gold); background: #2e2620; }
+  .tds:disabled { opacity: .45; cursor: not-allowed; }
   .modes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .tdu { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
     font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
@@ -254,6 +261,10 @@
       <button class="tdu" data-slot="0"></button><button class="tdu" data-slot="1"></button><button class="tdu" data-slot="2"></button>
       <button class="tdu" data-slot="3"></button><button class="tdu" data-slot="4"></button>
       <button class="tdu" id="upClose">Close</button>
+    </div>
+    <p class="help" id="tdSpellHead" style="margin:10px 0 6px;text-align:left" hidden>Wizard spell</p>
+    <div class="modes" id="tdSpells" hidden>
+      <button class="tds" data-s="both"></button><button class="tds" data-s="slow"></button><button class="tds" data-s="burn"></button>
     </div>
     <p class="help" style="margin:10px 0 6px;text-align:left">Target priority</p>
     <div class="modes">
@@ -1170,6 +1181,7 @@ const TD = (() => {
   const RANGE_STEP = { stick: 20, sniper: 60, fast: 20, wizard: 30, cannon: 40 };
   const rangeOf = t => TYPES[t.type].range + RANGE_STEP[t.type] * t.lv.range;
   const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : t.type === "fast" ? Math.pow(0.75, t.lv.rate) : 1);
+  const SPELLS = { both: ["Both", "Alternates slow and burn"], slow: ["Only slow", "Every hit slows"], burn: ["Only burn", "Every hit burns"] };
   const MODES = {
     first:   { name: "First",          desc: "Enemy in front" },
     last:    { name: "Last",           desc: "Enemy at the back" },
@@ -1219,9 +1231,11 @@ const TD = (() => {
       if (t.snd <= 0) { beep(700, 0.03, "square", 0.04); t.snd = 0.1; }
     } else {
       damage(e, 2 + t.lv.dmg); w = 10; life = 0.22;
+      if (t.spell === "slow") t.ice = true; else if (t.spell === "burn") t.ice = false;
       if (t.ice) { e.slow = 2 + t.lv.slow; col = "#29adff"; }
       else { e.burn = 2 + t.lv.burn; e.burnT = 0; e.burnDmg = 1 + t.lv.hot; col = "#ff004d"; }
-      t.ice = !t.ice; beep(t.ice ? 500 : 330, 0.12, "triangle", 0.08, t.ice ? 800 : 200);
+      const iceShot = t.ice; if (t.spell === "both") t.ice = !t.ice;
+      beep(iceShot ? 500 : 330, 0.12, "triangle", 0.08, iceShot ? 800 : 200);
     }
     fx.push({ x1: mx, y1: my, x2: e.x, y2: e.y, life, c: col, w });
     if (fx.length > 60) fx.shift();
@@ -1249,7 +1263,7 @@ const TD = (() => {
     const T = TYPES[sel];
     if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
     coins -= T.cost; built++;
-    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", lv: { dmg: 0, rate: 0, size: 0, range: 0, slow: 0, burn: 0, hot: 0 } };
+    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", spell: "both", lv: { dmg: 0, rate: 0, size: 0, range: 0, slow: 0, burn: 0, hot: 0 } };
     selTower = -1;
     beep(660, 0.12, "triangle", 0.12, 990);
   });
@@ -1278,6 +1292,10 @@ const TD = (() => {
   }
   $$("#tdPanel [data-slot]").forEach(b => b.addEventListener("click", () => {
     const t = towers[selTower]; if (t) upgrade(kindsOf(t)[+b.dataset.slot]);
+  }));
+  $$(".tds").forEach(b => b.addEventListener("click", () => {
+    const t = towers[selTower];
+    if (t && t.type === "wizard") { t.spell = b.dataset.s; beep(560, 0.05, "square", 0.06); }
   }));
   $("#upClose").addEventListener("click", () => { selTower = -1; });
   $("#tdStart").addEventListener("click", startWave);
@@ -1375,6 +1393,13 @@ const TD = (() => {
         b.classList.toggle("sel", st.mode === b.dataset.m);
       });
       const kinds = kindsOf(st);
+      const wz = st.type === "wizard";
+      $("#tdSpells").hidden = $("#tdSpellHead").hidden = !wz;
+      if (wz) $$(".tds").forEach(b => {
+        const sp = SPELLS[b.dataset.s], html = sp[0] + "<small class='d'>" + sp[1] + "</small>";
+        if (b.dataset.h !== html) { b.innerHTML = html; b.dataset.h = html; }
+        b.classList.toggle("sel", st.spell === b.dataset.s);
+      });
       $("#tdPanelName").textContent = TYPES[st.type].name;
       $$("#tdPanel [data-slot]").forEach(btn => {
         const k = kinds[+btn.dataset.slot];
