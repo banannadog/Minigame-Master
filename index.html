@@ -70,6 +70,13 @@
   .up small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
   .up:not(:disabled):hover { border-color: var(--gold); }
   .up:disabled { opacity: .45; cursor: not-allowed; }
+  .tdb { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
+    font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .tdb small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
+  .tdb small.d { color: var(--muted); margin-top: 2px; }
+  .tdb:not(:disabled):hover { border-color: var(--gold); }
+  .tdb.sel { border-color: var(--gold); background: #2e2620; }
+  .tdb:disabled { opacity: .45; cursor: not-allowed; }
   /* side games */
   #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
     border: 2px solid #3a322c; border-radius: 0; overflow: hidden; touch-action: manipulation; }
@@ -99,6 +106,11 @@
       <canvas class="ico" data-ico="snow" width="12" height="12"></canvas><h3>Snow Fight</h3>
       <p>Spam to make snowballs, aim and throw them at the bot's base, then spend points on upgrades.</p>
       <div class="best" id="bestSnow"></div>
+    </button>
+    <button class="card" data-go="tdGame">
+      <canvas class="ico" data-ico="tower" width="12" height="12"></canvas><h3>Stick Defense</h3>
+      <p>Place stickman, sniper, fast and wizard helpers to stop 10 waves of tiny sword stickmen.</p>
+      <div class="best" id="bestTD"></div>
     </button>
     <button class="card" data-go="tap">
       <canvas class="ico" data-ico="target" width="12" height="12"></canvas><h3>Target Tap</h3>
@@ -195,6 +207,32 @@
   </div>
 </section>
 
+<!-- STICK DEFENSE -->
+<section id="tdGame" class="screen">
+  <div class="hud"><span id="tdWave">Wave 0/10</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 200</span></div>
+  <canvas id="tv" width="200" height="140"></canvas>
+  <div class="actions">
+    <button class="btn big" id="tdStart">START WAVE 1</button>
+    <button class="btn alt big" id="tdSpeed">SPEED x1</button>
+    <button class="btn alt big" data-go="menu">EXIT</button>
+  </div>
+  <div class="shop">
+    <button class="tdb" data-t="stick"></button><button class="tdb" data-t="sniper"></button>
+    <button class="tdb" data-t="fast"></button><button class="tdb" data-t="wizard"></button>
+    <button class="tdb" data-t="sell"></button>
+  </div>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Kills earn coins.</p>
+</section>
+
+<section id="tdEnd" class="screen">
+  <div class="summary">
+    <h2 id="tdEndTitle">Victory!</h2>
+    <table id="tdEndTable"></table>
+    <button class="btn" id="tdAgain">Play again</button>
+    <button class="btn alt" data-go="menu">Menu</button>
+  </div>
+</section>
+
 <!-- TARGET TAP -->
 <section id="tap" class="screen">
   <h2><canvas class="ico sm" data-ico="target" width="12" height="12"></canvas> Target Tap</h2>
@@ -230,6 +268,7 @@ function show(id) {
   if (id !== "kGame") Katana.stop();
   if (id !== "tap") Tap.stop();
   if (id !== "sGame") Snow.stop();
+  if (id !== "tdGame") TD.stop();
   if (id === "menu") refreshBest();
 }
 $$("[data-go]").forEach(b => b.addEventListener("click", () => {
@@ -246,6 +285,7 @@ function refreshBest() {
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
   const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
+  const tb = store.get("mm_td", 0); $("#bestTD").textContent = tb ? "Best: wave " + tb : "";
   $("#bestSnow").textContent = sp.length ? "Wins: " + sp.join(" · ") : "";
   const m = store.get("mm_mem", 0); $("#bestMemory").textContent = m ? "Best: level " + m : "";
 }
@@ -275,7 +315,7 @@ const sfx = {
 const PALETTE = ["000000","1a1210","2a1f2f","3a2530","4a2c2a","1d2b53","5f574f","c2c3c7","fff1e8","f3e9d2",
   "d7263d","ff004d","ffa300","ffc94a","ffec27","00e436","4ade80","5ab0ff","29adff","b9803f","6b4620",
   "ab5236","c9a66b","8a7a6a","3a2b22","5a3d30","222222","cfd8e3","a99d90","d0d0d0",
-  "e8f4ff","9fd3ff","6aa7d8","3b6ea5","20395f","0f1b33"]
+  "e8f4ff","9fd3ff","6aa7d8","3b6ea5","20395f","0f1b33","008751","00522e"]
   .map(h => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
 function posterizeCanvas(cv, ctx) {
   const w = cv.width, h = cv.height;
@@ -988,6 +1028,312 @@ const Snow = (() => {
 })();
 
 /* =====================================================
+   STICK DEFENSE
+   ===================================================== */
+const TD = (() => {
+  const cv = $("#tv"), ctx = cv.getContext("2d");
+  const W = 800, H = 560, PX = 4, WAVES = 10;
+  const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
+  const PATH = [[-20, 110], [180, 110], [180, 290], [420, 290], [420, 120], [640, 120], [640, 400], [300, 400], [300, 478]];
+  const CUM = [0];
+  for (let i = 1; i < PATH.length; i++) CUM.push(CUM[i - 1] + Math.hypot(PATH[i][0] - PATH[i - 1][0], PATH[i][1] - PATH[i - 1][1]));
+  const TOTAL = CUM[CUM.length - 1];
+  const PADS = [[100, 200], [260, 200], [300, 345], [500, 200], [560, 350], [700, 260],
+                [700, 60], [320, 60], [100, 360], [450, 470], [190, 440], [420, 350]];
+  const TYPES = {
+    stick:  { name: "Stickman",      cost: 40,  range: 100, cd: 0.5,  desc: "1 damage, near enemies" },
+    sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
+    fast:   { name: "Fast stickman", cost: 220, range: 110, cd: 0.02, desc: "2 damage every 20ms" },
+    wizard: { name: "Wizard",        cost: 150, range: 230, cd: 1.0,  desc: "2 dmg + slow or burn 2s" }
+  };
+  const ENEMY = {
+    blob:   { hp: 8,   spd: 70,  rew: 8,   size: 30, col: "#00e436", life: 1 },
+    runner: { hp: 5,   spd: 120, rew: 6,   size: 24, col: "#ffa300", life: 1 },
+    tank:   { hp: 36,  spd: 48,  rew: 20,  size: 42, col: "#8a7a6a", life: 2 },
+    boss:   { hp: 280, spd: 40,  rew: 100, size: 58, col: "#ff004d", life: 5 }
+  };
+  const TUFTS = Array.from({ length: 60 }, () => ({ x: Math.random() * W, y: Math.random() * H }));
+
+  let running = false, raf = 0, prev = 0, endTimer = 0;
+  let coins, lives, wave, waveActive, queue, spawnT, spawnGap, enemies, towers, fx, floats;
+  let kills, earned, built, speed, sel, hover, over, won, banner;
+
+  function pointAt(d) {
+    let i = 1;
+    while (i < CUM.length - 1 && CUM[i] < d) i++;
+    const a = PATH[i - 1], b = PATH[i], t = (d - CUM[i - 1]) / (CUM[i] - CUM[i - 1]);
+    return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t };
+  }
+
+  function start() {
+    coins = 200; lives = 15; wave = 0; waveActive = false; queue = []; spawnT = 0; spawnGap = 1;
+    enemies = []; towers = PADS.map(() => null); fx = []; floats = [];
+    kills = 0; earned = 0; built = 0; speed = 1; sel = "stick"; hover = -1; over = false; won = false; banner = "";
+    show("tdGame");
+    stop(); running = true; prev = performance.now();
+    loop();
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); clearTimeout(endTimer); }
+
+  function buildWave(w) {
+    const q = [];
+    for (let i = 0; i < 5 + 2 * w; i++) q.push("blob");
+    for (let i = 0; i < Math.max(0, (w - 2) * 2); i++) q.push("runner");
+    for (let i = 0; i < Math.floor(w / 2); i++) q.push("tank");
+    for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
+    if (w % 5 === 0) for (let i = 0; i < w / 5; i++) q.push("boss");
+    return q;
+  }
+  function startWave() {
+    if (!running || waveActive || over) return;
+    wave++; waveActive = true; queue = buildWave(wave); spawnT = 0.3; spawnGap = Math.max(0.4, 1 - 0.06 * wave);
+    banner = "";
+    beep(300, 0.2, "square", 0.1, 600);
+  }
+  function spawn(type) {
+    const E = ENEMY[type], k = type === "boss" ? wave / 5 : type === "tank" ? 1 + 0.3 * (wave - 1) : 1 + 0.25 * (wave - 1);
+    const hp = Math.round(E.hp * k);
+    enemies.push({ type, hp, max: hp, s: 0, slow: 0, burn: 0, burnT: 0, x: PATH[0][0], y: PATH[0][1], dead: false });
+  }
+
+  function damage(e, d) {
+    if (e.dead) return;
+    e.hp -= d;
+    if (e.hp <= 0) {
+      e.dead = true; kills++;
+      const r = ENEMY[e.type].rew; coins += r; earned += r;
+      floats.push({ x: e.x, y: e.y - 30, txt: "+" + r, life: 0.8, c: "#ffc94a" });
+      beep(520, 0.06, "triangle", 0.08, 900);
+    }
+  }
+
+  /* ----- towers ----- */
+  function target(t) {
+    const T = TYPES[t.type];
+    let best = null;
+    for (const e of enemies) {
+      if (e.dead || Math.hypot(e.x - t.x, e.y - t.y) > T.range) continue;
+      if (!best || e.s > best.s) best = e;                      // the enemy closest to your base goes first
+    }
+    return best;
+  }
+  function fire(t, e) {
+    const dist = Math.hypot(e.x - t.x, e.y - t.y);
+    t.face = e.x >= t.x ? 1 : -1; t.flash = 0.12;
+    const mx = t.x + t.face * 24, my = t.y - 10;
+    let col = "#fff1e8", w = 6, life = 0.08;
+    if (t.type === "stick") { damage(e, 1); beep(220, 0.04, "square", 0.05); }
+    else if (t.type === "sniper") {
+      damage(e, dist <= 120 ? 6 : 4); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
+    } else if (t.type === "fast") {
+      damage(e, 2); col = "#ffa300"; w = 4; life = 0.05;
+      if (t.snd <= 0) { beep(700, 0.03, "square", 0.04); t.snd = 0.1; }
+    } else {
+      damage(e, 2); w = 10; life = 0.22;
+      if (t.ice) { e.slow = 2; col = "#29adff"; } else { e.burn = 2; e.burnT = 0; col = "#ff004d"; }
+      t.ice = !t.ice; beep(t.ice ? 500 : 330, 0.12, "triangle", 0.08, t.ice ? 800 : 200);
+    }
+    fx.push({ x1: mx, y1: my, x2: e.x, y2: e.y, life, c: col, w });
+    if (fx.length > 60) fx.shift();
+  }
+
+  /* ----- input ----- */
+  function pos(ev) {
+    const r = cv.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * W / r.width, y: (ev.clientY - r.top) * H / r.height };
+  }
+  function padAt(p) { return PADS.findIndex(q => Math.abs(p.x - q[0]) <= 26 && Math.abs(p.y - q[1]) <= 26); }
+  cv.addEventListener("pointermove", ev => { hover = padAt(pos(ev)); });
+  cv.addEventListener("pointerdown", ev => {
+    if (!running || over) return;
+    const i = padAt(pos(ev)); hover = i;
+    if (i < 0) return;
+    const P = PADS[i], t = towers[i];
+    if (sel === "sell") {
+      if (!t) return;
+      const refund = Math.floor(TYPES[t.type].cost * 0.6); coins += refund; towers[i] = null;
+      floats.push({ x: P[0], y: P[1] - 40, txt: "+" + refund, life: 0.8, c: "#ffc94a" }); beep(260, 0.1, "triangle", 0.1);
+      return;
+    }
+    if (t) { floats.push({ x: P[0], y: P[1] - 40, txt: "TAKEN", life: 0.7, c: "#ff004d" }); return; }
+    const T = TYPES[sel];
+    if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
+    coins -= T.cost; built++;
+    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0 };
+    beep(660, 0.12, "triangle", 0.12, 990);
+  });
+  $("#tdStart").addEventListener("click", startWave);
+  $("#tdSpeed").addEventListener("click", () => { speed = speed === 1 ? 2 : 1; });
+  $$(".tdb").forEach(b => b.addEventListener("click", () => { sel = b.dataset.t; }));
+  $("#tdAgain").addEventListener("click", start);
+  $('[data-go="tdGame"]').addEventListener("click", start);
+
+  /* ----- loop ----- */
+  function loop(ts = performance.now()) {
+    if (!running) return;
+    const dt = Math.min((ts - prev) / 1000 || 0.016, 0.05); prev = ts;
+    update(dt * speed); draw(ts); hud();
+    raf = requestAnimationFrame(loop);
+  }
+  function finish(win) {
+    over = true; won = win; waveActive = false; queue = [];
+    endTimer = setTimeout(() => {
+      stop();
+      const reached = win ? WAVES : Math.max(0, wave - 1);
+      const best = store.get("mm_td", 0); if (reached > best) store.set("mm_td", reached);
+      $("#tdEndTitle").textContent = win ? "Victory!" : "Base destroyed";
+      $("#tdEndTable").innerHTML = "<tr><td>Waves cleared</td><td>" + reached + "/" + WAVES + "</td></tr>" +
+        "<tr><td>Enemies defeated</td><td>" + kills + "</td></tr><tr><td>Coins earned</td><td>" + earned + "</td></tr>" +
+        "<tr><td>Helpers placed</td><td>" + built + "</td></tr>";
+      show("tdEnd");
+    }, 1500);
+  }
+  function update(dt) {
+    if (waveActive && queue.length) { spawnT -= dt; if (spawnT <= 0) { spawn(queue.shift()); spawnT = spawnGap; } }
+    for (const e of enemies) {
+      if (e.dead) continue;
+      if (e.burn > 0) { e.burn -= dt; e.burnT += dt; while (e.burnT >= 0.5) { e.burnT -= 0.5; damage(e, 1); } }
+      if (e.slow > 0) e.slow -= dt;
+      e.s += ENEMY[e.type].spd * (e.slow > 0 ? 0.45 : 1) * dt;
+      if (e.s >= TOTAL) {
+        e.dead = true; lives -= ENEMY[e.type].life;
+        floats.push({ x: 300, y: 440, txt: "-" + ENEMY[e.type].life, life: 1, c: "#ff004d" }); beep(100, 0.25, "sawtooth", 0.15, 50);
+        if (lives <= 0 && !over) { lives = 0; finish(false); }
+        continue;
+      }
+      const p = pointAt(e.s); if (Math.abs(p.x - e.x) > 0.01) e.dir = p.x > e.x ? 1 : -1; e.x = p.x; e.y = p.y;
+    }
+    if (!over) for (const t of towers) {
+      if (!t) continue;
+      t.flash = Math.max(0, t.flash - dt); t.snd -= dt; t.cd -= dt;
+      let guard = 0;
+      while (t.cd <= 0 && guard++ < 8) {
+        const e = target(t);
+        if (!e) { t.cd = 0; break; }
+        fire(t, e); t.cd += TYPES[t.type].cd;
+        if (e.dead) continue;
+      }
+    }
+    enemies = enemies.filter(e => !e.dead);
+    if (waveActive && !queue.length && !enemies.length && !over) {
+      waveActive = false;
+      if (wave >= WAVES) finish(true);
+      else { coins += 30; earned += 30; banner = "WAVE " + wave + " CLEARED +30"; beep(660, 0.2, "triangle", 0.15, 990); }
+    }
+    fx.forEach(f => { f.life -= dt; }); fx = fx.filter(f => f.life > 0);
+    floats.forEach(f => { f.y -= 50 * dt; f.life -= dt; }); floats = floats.filter(f => f.life > 0);
+  }
+
+  let lastShop = [];
+  function hud() {
+    $("#tdWave").textContent = "Wave " + wave + "/" + WAVES;
+    $("#tdLives").textContent = "Lives " + lives;
+    $("#tdCoins").textContent = "Coins " + coins;
+    const sb = $("#tdStart");
+    sb.disabled = waveActive || over;
+    sb.textContent = waveActive ? "WAVE " + wave + "..." : "START WAVE " + Math.min(wave + 1, WAVES);
+    $("#tdSpeed").textContent = "SPEED x" + speed;
+    $$(".tdb").forEach((b, i) => {
+      const k = b.dataset.t, T = TYPES[k];
+      const html = k === "sell" ? "Sell helper<small class='d'>Click one to get 60% back</small>"
+        : T.name + "<small class='d'>" + T.desc + "</small><small>" + T.cost + " coins</small>";
+      if (lastShop[i] !== html) { b.innerHTML = html; lastShop[i] = html; }
+      b.classList.toggle("sel", sel === k);
+      b.disabled = false;
+    });
+    cv.style.cursor = "pointer";
+  }
+
+  /* ----- drawing ----- */
+  function label(t, x, y, color, size = 32) {
+    ctx.font = size + "px " + FONT; ctx.textAlign = "center";
+    ctx.lineWidth = 8; ctx.lineJoin = "round"; ctx.strokeStyle = "#0f1b33"; ctx.strokeText(t, x, y);
+    ctx.fillStyle = color; ctx.fillText(t, x, y);
+  }
+  function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  function drawTower(t) {
+    const x = t.x, y = t.y, d = t.face;
+    ctx.save(); ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+    ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 6;
+    line(x - 8, y + 20, x, y + 8); line(x + 8, y + 20, x, y + 8);
+    line(x, y + 8, x, y - 12);
+    line(x, y - 8, x - d * 10, y + 2);
+    line(x, y - 8, x + d * 12, y - 4);
+    ctx.beginPath(); ctx.arc(x, y - 22, 8, 0, Math.PI * 2); ctx.stroke();
+    if (t.type === "stick") {
+      ctx.strokeStyle = "#ab5236"; ctx.lineWidth = 6; line(x + d * 12, y - 4, x + d * 22, y - 24);
+    } else if (t.type === "sniper") {
+      ctx.fillStyle = "#5f574f"; ctx.fillRect(x - 11, y - 36, 22, 6); ctx.fillRect(x - 7, y - 42, 14, 6);
+      ctx.strokeStyle = "#c2c3c7"; ctx.lineWidth = 4; line(x + d * 2, y - 6, x + d * 34, y - 12);
+    } else if (t.type === "fast") {
+      ctx.strokeStyle = "#ffec27"; ctx.lineWidth = 4; line(x - 9, y - 24, x + 9, y - 24);
+      line(x - d * 20, y - 6, x - d * 32, y - 6); line(x - d * 20, y + 4, x - d * 28, y + 4);
+    } else {
+      ctx.fillStyle = "#29adff"; ctx.beginPath(); ctx.moveTo(x - 11, y - 28); ctx.lineTo(x + 11, y - 28); ctx.lineTo(x, y - 52); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ffc94a"; ctx.lineWidth = 4; line(x + d * 16, y + 18, x + d * 16, y - 22);
+      ctx.fillStyle = t.ice ? "#29adff" : "#ff004d"; ctx.beginPath(); ctx.arc(x + d * 16, y - 27, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    if (t.flash > 0) { ctx.fillStyle = "#fff1e8"; ctx.beginPath(); ctx.arc(x + d * 26, y - 10, 7, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  function drawEnemy(e, now) {
+    const E = ENEMY[e.type], k = E.size / 30, x = e.x, y = e.y, d = e.dir || 1, step = Math.sin(e.s / 8);
+    const col = e.slow > 0 ? "#6aa7d8" : E.col, lw = e.type === "tank" ? 9 : 6;
+    ctx.save(); ctx.lineCap = "butt"; ctx.lineJoin = "miter"; ctx.strokeStyle = col; ctx.lineWidth = lw;
+    line(x, y + 6 * k, x - 7 * k + step * 6 * k, y + 20 * k); line(x, y + 6 * k, x + 7 * k - step * 6 * k, y + 20 * k);   // legs
+    line(x, y - 9 * k, x, y + 6 * k);                                                                                       // torso
+    line(x, y - 5 * k, x - d * 8 * k, y + 3 * k);                                                                           // back arm
+    const hx = x + d * 11 * k, hy = y - 1 * k + step * 2 * k;
+    line(x, y - 5 * k, hx, hy);                                                                                             // sword arm
+    ctx.beginPath(); ctx.arc(x, y - 15 * k, 6 * k, 0, Math.PI * 2); ctx.stroke();                                          // head
+    ctx.strokeStyle = e.type === "boss" ? "#ffec27" : "#c2c3c7"; ctx.lineWidth = e.type === "boss" ? 6 : 5;                // sword
+    line(hx, hy, hx + d * 7 * k, hy - 20 * k);
+    ctx.strokeStyle = "#ab5236"; ctx.lineWidth = 5; line(hx - d * 4 * k, hy - 5 * k, hx + d * 6 * k, hy - 3 * k);          // hilt
+    let top = y - 22 * k;
+    if (e.type === "tank") { ctx.fillStyle = "#c2c3c7"; ctx.fillRect(x - 7 * k, y - 22 * k, 14 * k, 6 * k); }
+    if (e.type === "boss") { ctx.fillStyle = "#ffc94a"; ctx.fillRect(x - 8 * k, top - 8, 16 * k, 8); ctx.fillRect(x - 8 * k, top - 16, 6, 8); ctx.fillRect(x - 3, top - 16, 6, 8); ctx.fillRect(x + 8 * k - 6, top - 16, 6, 8); top -= 16; }
+    if (e.burn > 0) { ctx.fillStyle = "#ffa300"; const o = Math.floor(now / 90) % 2 * 6; ctx.fillRect(x - 10 + o, top - 14, 8, 12); ctx.fillRect(x + 4 - o, top - 10, 8, 8); ctx.fillStyle = "#ffec27"; ctx.fillRect(x - 6 + o, top - 8, 4, 6); }
+    const bw = 30 * k + 6, bx = x - bw / 2, by = top - (e.burn > 0 ? 26 : 14);
+    ctx.fillStyle = "#0f1b33"; ctx.fillRect(bx - 2, by - 2, bw + 4, 12);
+    ctx.fillStyle = e.hp / e.max > 0.4 ? "#00e436" : "#ff004d"; ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.max), 8);
+    ctx.restore();
+  }
+  function draw(now) {
+    ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0); ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#008751"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#00522e"; TUFTS.forEach(t => { ctx.fillRect(t.x, t.y, 12, 8); ctx.fillRect(t.x + 4, t.y - 8, 4, 8); });
+    ctx.lineJoin = "miter"; ctx.lineCap = "butt";
+    ctx.strokeStyle = "#8a7a6a"; ctx.lineWidth = 48; ctx.beginPath(); PATH.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+    ctx.strokeStyle = "#c9a66b"; ctx.lineWidth = 36; ctx.beginPath(); PATH.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+    // base house
+    ctx.fillStyle = "#e8f4ff"; ctx.fillRect(268, 478, 64, 50); ctx.fillStyle = "#ab5236"; ctx.fillRect(280, 498, 14, 30);
+    ctx.fillStyle = "#d7263d"; ctx.beginPath(); ctx.moveTo(258, 480); ctx.lineTo(342, 480); ctx.lineTo(300, 444); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#29adff"; ctx.fillRect(306, 494, 16, 16);
+    // pads
+    PADS.forEach((q, i) => {
+      const free = !towers[i], hot = hover === i;
+      ctx.fillStyle = "#00522e"; ctx.fillRect(q[0] - 28, q[1] - 28, 56, 56);
+      ctx.fillStyle = hot ? "#ffec27" : "#c2c3c7"; ctx.fillRect(q[0] - 24, q[1] - 24, 48, 48);
+      ctx.fillStyle = free ? "#5f574f" : "#3a2b22"; ctx.fillRect(q[0] - 20, q[1] - 20, 40, 40);
+    });
+    // range ring on hover
+    if (hover >= 0 && sel !== "sell") {
+      const q = PADS[hover], T = TYPES[towers[hover] ? towers[hover].type : sel];
+      ctx.strokeStyle = "#ffec27"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(q[0], q[1], T.range, 0, Math.PI * 2); ctx.stroke();
+    }
+    towers.forEach(t => t && drawTower(t));
+    enemies.forEach(e => drawEnemy(e, now));
+    fx.forEach(f => { ctx.strokeStyle = f.c; ctx.lineWidth = f.w; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke(); });
+    floats.forEach(f => label(f.txt, f.x, f.y, f.c));
+    if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, 280, won ? "#ffc94a" : "#ff004d", 64);
+    else if (!waveActive) label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a");
+    posterizeCanvas(cv, ctx);
+  }
+
+  return { start, stop };
+})();
+
+/* =====================================================
    TARGET TAP
    ===================================================== */
 const Tap = (() => {
@@ -1080,6 +1426,9 @@ const Tap = (() => {
     "kr.........."];
   function grid(name) {
     if (name === "katana") return KATANA;
+    if (name === "tower") return [
+      ".....bb.....", "....bbbb....", "...bbbbbb...", "....WWWW....", "....WWWW....", ".....WW.....",
+      "..WWWWWWWW..", ".....WW.....", ".....WW.....", "....W..W....", "...W....W...", "..iiiiiiii.."];
     if (name === "snow") {
       const out = [];
       for (let y = 0; y < 12; y++) { let r = ""; for (let x = 0; x < 12; x++) {
