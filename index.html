@@ -295,7 +295,7 @@
   <h2><canvas class="ico sm" data-ico="mountain" width="12" height="12"></canvas> Mountain Climbing</h2>
   <p class="sub">Press the glowing rock to climb. Press anywhere else, or run out of time, and you fall.</p>
   <div class="diffs">
-    <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:64px;height:64px"></span><br><small>Big rocks</small></button>
+    <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:56px;height:56px"></span><br><small>Big rocks</small></button>
     <button class="diff" data-d="medium"><b>Medium</b><span class="sq" style="width:42px;height:42px"></span><br><small>Smaller rocks</small></button>
     <button class="diff" data-d="hard"><b>Hard</b><span class="sq" style="width:26px;height:26px"></span><br><small>Tiny rocks</small></button>
   </div>
@@ -1590,7 +1590,7 @@ const Climb = (() => {
   const W = 800, H = 560, PX = 4, HOLDS = 60, METERS = 2, START_Y = 480, HANG = 400;
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
   // rock radius gets smaller on harder levels, and the grip timer runs out faster
-  const DIFF = { easy: { r: 46, t0: 2.8, tmin: 1.4 }, medium: { r: 30, t0: 2.3, tmin: 1.05 }, hard: { r: 19, t0: 2.0, tmin: 0.85 } };
+  const DIFF = { easy: { r: 40, t0: 2.4, tmin: 1.2 }, medium: { r: 30, t0: 2.3, tmin: 1.05 }, hard: { r: 19, t0: 2.0, tmin: 0.85 } };
   const WALL = ["#5f574f", "#8a7a6a", "#a99d90", "#c2c3c7", "#e8f4ff"];
   const hash = n => { n = Math.imul(n ^ 61, 0x9e3779b1); n ^= n >>> 15; n = Math.imul(n, 0x85ebca6b); n ^= n >>> 13; return (n >>> 0) / 4294967296; };
 
