@@ -160,7 +160,7 @@
   <p class="help">Each round: spam SPAM (or the space bar) to make snowballs, press DONE, then aim with the mouse
     or finger and click to throw. A hit on the enemy base is worth 2 points. Spend points on upgrades.
     Break the other base to win.</p>
-  <div class="tiers">Taller base 8 pts · Stronger base 10 pts · Faster snowballs 6 pts · Better aim 6 pts</div>
+  <div class="tiers">Taller base 8 pts · Stronger base 10 pts · Faster snowballs 6 pts · Better aim 6 pts · More health 7 pts</div>
   <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
 </section>
 
@@ -176,6 +176,7 @@
   <div class="shop">
     <button class="up" data-up="tall"></button><button class="up" data-up="strong"></button>
     <button class="up" data-up="fast"></button><button class="up" data-up="aim"></button>
+    <button class="up" data-up="health"></button>
   </div>
   <p class="help" id="sHelp"></p>
 </section>
@@ -686,9 +687,9 @@ const Snow = (() => {
   const cv = $("#sv"), ctx = cv.getContext("2d");
   const W = 800, H = 560, PX = 4, GROUND = 480;
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
-  const COST = { tall: 8, strong: 10, fast: 6, aim: 6 }, MAXLV = 3, BUILD_TIME = 5, HIT_POINTS = 2;
-  const NAMES = { tall: "Taller base", strong: "Stronger base", fast: "Faster snowballs", aim: "Better aim" };
-  const BOTS = { easy: { balls: 4, spread: 110 }, medium: { balls: 6, spread: 70 }, hard: { balls: 7, spread: 45 } };
+  const COST = { tall: 8, strong: 10, fast: 6, aim: 6, health: 7 }, MAXLV = 3, BUILD_TIME = 5, HIT_POINTS = 2;
+  const NAMES = { tall: "Taller base", strong: "Stronger base", fast: "Faster snowballs", aim: "Better aim", health: "More health" };
+  const BOTS = { easy: { balls: 5, spread: 95 }, medium: { balls: 7, spread: 60 }, hard: { balls: 9, spread: 38 } };
   const SIDES = {
     me:  { x0: 170, x1: 260, man: 90,  dir: 1,  color: "#29adff" },
     bot: { x0: 540, x1: 630, man: 710, dir: -1, color: "#ff004d" }
@@ -701,7 +702,7 @@ const Snow = (() => {
   let aim = { x: 560, y: 420 };
 
   const fighter = () => ({ hp: 20, maxHp: 20, pts: 0, hits: 0, flash: 0, throwT: 0, balls: 0, prog: 0,
-    lv: { tall: 0, strong: 0, fast: 0, aim: 0 } });
+    lv: { tall: 0, strong: 0, fast: 0, aim: 0, health: 0 } });
   const side = k => (k === "me" ? me : bot);
   const baseH = f => 70 + 30 * f.lv.tall;
   const dmg = f => 1 - 0.2 * f.lv.strong;
@@ -722,11 +723,12 @@ const Snow = (() => {
     if (f.lv[k] >= MAXLV || f.pts < COST[k]) return false;
     f.pts -= COST[k]; f.lv[k]++;
     if (k === "tall") { f.maxHp += 6; f.hp += 6; }
+    if (k === "health") { f.maxHp += 8; f.hp += 8; }
     return true;
   }
   function botBuy() {
     for (;;) {
-      const next = ["aim", "fast", "strong", "tall"].filter(k => bot.lv[k] < MAXLV).sort((a, b) => bot.lv[a] - bot.lv[b])[0];
+      const next = ["aim", "fast", "health", "strong", "tall"].filter(k => bot.lv[k] < MAXLV).sort((a, b) => bot.lv[a] - bot.lv[b])[0];
       if (!next || !buy(bot, next)) return;
     }
   }
@@ -920,6 +922,7 @@ const Snow = (() => {
     const bw = w + 10, bx = S.x0 - 5, by = top - 70, frac = f.hp / f.maxHp;       // health bar
     ctx.fillStyle = "#0f1b33"; ctx.fillRect(bx - 4, by - 4, bw + 8, 20);
     ctx.fillStyle = frac > 0.4 ? "#00e436" : "#ff004d"; ctx.fillRect(bx, by, bw * frac, 12);
+    label(Math.ceil(f.hp) + "/" + f.maxHp, S.x0 + w / 2, by - 14, "#fff1e8");
   }
   function draw(now) {
     ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
