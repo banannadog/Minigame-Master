@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Minigame Master</title>
+<style>
+  :root {
+    --bg: #14110f;
+    --panel: #221d1a;
+    --ink: #f4ece2;
+    --muted: #a99d90;
+    --red: #d7263d;
+    --gold: #ffc94a;
+    --green: #4ade80;
+    --blue: #5ab0ff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: "Trebuchet MS", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; padding: 16px; overflow-x: hidden; }
+  h1 { margin: 8px 0 4px; font-size: clamp(1.8rem, 5vw, 3rem); letter-spacing: 2px; text-transform: uppercase; }
+  h1 span { color: var(--red); }
+  h2 { margin: 0 0 8px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; text-align: center; }
+  .screen { display: none; width: 100%; max-width: 860px; flex-direction: column; align-items: center; }
+  .screen.active { display: flex; }
+  .cards { display: grid; gap: 14px; width: 100%; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card { background: var(--panel); border: 2px solid #3a322c; border-radius: 14px; padding: 18px;
+    cursor: pointer; transition: transform .12s, border-color .12s; text-align: left; color: inherit; font: inherit; }
+  .card:hover { transform: translateY(-3px); border-color: var(--red); }
+  .card .emoji { font-size: 2.2rem; }
+  .card h3 { margin: 6px 0 4px; }
+  .card p { margin: 0; color: var(--muted); font-size: .92rem; }
+  .card .best { margin-top: 8px; font-size: .85rem; color: var(--gold); }
+  button.btn { background: var(--red); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px;
+    font: inherit; font-weight: 700; cursor: pointer; margin: 4px; }
+  button.btn.alt { background: #3a322c; }
+  button.btn:hover { filter: brightness(1.15); }
+  .diffs { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 12px 0; }
+  .diff { background: var(--panel); border: 2px solid #3a322c; border-radius: 12px; padding: 14px 18px;
+    cursor: pointer; text-align: center; min-width: 150px; color: inherit; font: inherit; }
+  .diff:hover { border-color: var(--gold); }
+  .diff b { display: block; font-size: 1.15rem; }
+  .diff small { color: var(--muted); }
+  .diff .sq { display: inline-block; background: var(--gold); margin: 8px 0 2px; border-radius: 3px; }
+  .hud { display: flex; justify-content: space-between; width: 100%; max-width: 800px; margin-bottom: 8px;
+    font-weight: 700; gap: 8px; flex-wrap: wrap; }
+  .hud span { background: var(--panel); padding: 6px 12px; border-radius: 8px; }
+  canvas { width: 100%; max-width: 800px; height: auto; border-radius: 14px; border: 2px solid #3a322c;
+    touch-action: none; cursor: none; background: #000; }
+  .summary { background: var(--panel); border-radius: 14px; padding: 20px; width: 100%; max-width: 520px; text-align: center; }
+  .summary table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  .summary td, .summary th { padding: 6px; border-bottom: 1px solid #3a322c; }
+  .big { font-size: 2.6rem; color: var(--gold); font-weight: 800; }
+  .help { color: var(--muted); font-size: .9rem; text-align: center; max-width: 560px; margin: 10px 0; }
+  .tiers { color: var(--muted); font-size: .85rem; margin-top: 10px; }
+  .tiers b.p { color: var(--gold); }
+  /* side games */
+  #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
+    border: 2px solid #3a322c; border-radius: 14px; overflow: hidden; touch-action: manipulation; }
+  .tgt { position: absolute; border-radius: 50%; background: radial-gradient(circle, #fff 0 12%, var(--red) 13% 40%, #fff 41% 55%, var(--red) 56%);
+    cursor: crosshair; border: 0; padding: 0; }
+  .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: min(360px, 90vw); margin: 14px 0; }
+  .pad { height: 130px; border-radius: 16px; border: 0; opacity: .55; cursor: pointer; transition: opacity .1s, transform .1s; }
+  .pad.lit { opacity: 1; transform: scale(1.04); filter: brightness(1.4); }
+  .pad[data-i="0"] { background: #e5484d; } .pad[data-i="1"] { background: #3e9bff; }
+  .pad[data-i="2"] { background: #3ecf8e; } .pad[data-i="3"] { background: #ffc94a; }
+</style>
+</head>
+<body>
+
+<h1>Minigame <span>Master</span></h1>
+
+<!-- MENU -->
+<section id="menu" class="screen active">
+  <p class="sub">Pick a game. Beat your best scores.</p>
+  <div class="cards">
+    <button class="card" data-go="katana">
+      <div class="emoji">⚔️</div><h3>Katana Slice</h3>
+      <p>A box hangs from a rope. The rope snaps at a random moment. Slice the box before it lands.</p>
+      <div class="best" id="bestKatana"></div>
+    </button>
+    <button class="card" data-go="tap">
+      <div class="emoji">🎯</div><h3>Target Tap</h3>
+      <p>Hit as many targets as you can in 20 seconds. They shrink the longer you survive.</p>
+      <div class="best" id="bestTap"></div>
+    </button>
+    <button class="card" data-go="memory">
+      <div class="emoji">🧠</div><h3>Pattern Memory</h3>
+      <p>Watch the pads light up, then repeat the sequence. It gets one step longer each round.</p>
+      <div class="best" id="bestMemory"></div>
+    </button>
+  </div>
+</section>
+
+<!-- KATANA: difficulty -->
+<section id="kDiff" class="screen">
+  <h2>⚔️ Katana Slice</h2>
+  <p class="sub">Choose a difficulty. Smaller box, bigger score multiplier.</p>
+  <div class="diffs">
+    <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:64px;height:64px"></span><br><small>Big box · x1 score</small></button>
+    <button class="diff" data-d="medium"><b>Medium</b><span class="sq" style="width:40px;height:40px"></span><br><small>Smaller box · x1.5 score</small></button>
+    <button class="diff" data-d="hard"><b>Hard</b><span class="sq" style="width:22px;height:22px"></span><br><small>Tiny box · x2 score</small></button>
+  </div>
+  <p class="help">5 rounds. Wait for the rope to snap, then swipe through the box with your mouse or finger.
+    Swiping before the rope breaks scores 0.<br>
+    Score by reaction time after the snap:</p>
+  <div class="tiers"><b class="p">PERFECT</b> ≤ 200ms = 1000 · GREAT ≤ 300ms = 400 · GOOD ≤ 450ms = 200 · OK ≤ 700ms = 80 · slower = 30</div>
+  <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
+</section>
+
+<!-- KATANA: game -->
+<section id="kGame" class="screen">
+  <div class="hud"><span id="kRound">Round 1/5</span><span id="kDiffLbl">Easy</span><span id="kScore">Score 0</span></div>
+  <canvas id="cv" width="800" height="560"></canvas>
+  <p class="help">Swipe or click through the box after the rope snaps.</p>
+</section>
+
+<!-- KATANA: summary -->
+<section id="kEnd" class="screen">
+  <div class="summary">
+    <h2>Run complete</h2>
+    <div class="big" id="kTotal">0</div>
+    <div id="kNew" style="color:var(--green);min-height:1.4em"></div>
+    <table id="kTable"></table>
+    <button class="btn" id="kAgain">Play again</button>
+    <button class="btn alt" data-go="kDiff">Change difficulty</button>
+    <button class="btn alt" data-go="menu">Menu</button>
+  </div>
+</section>
+
+<!-- TARGET TAP -->
+<section id="tap" class="screen">
+  <h2>🎯 Target Tap</h2>
+  <div class="hud" style="max-width:800px"><span id="tapTime">Time 20</span><span id="tapScore">Hits 0</span></div>
+  <div id="tapArea"></div>
+  <p class="help" id="tapMsg">Click Start. Targets shrink as you hit more.</p>
+  <div><button class="btn" id="tapStart">Start</button><button class="btn alt" data-go="menu">Menu</button></div>
+</section>
+
+<!-- MEMORY -->
+<section id="memory" class="screen">
+  <h2>🧠 Pattern Memory</h2>
+  <div class="hud" style="max-width:360px"><span id="memLvl">Level 0</span></div>
+  <div class="pads">
+    <button class="pad" data-i="0"></button><button class="pad" data-i="1"></button>
+    <button class="pad" data-i="2"></button><button class="pad" data-i="3"></button>
+  </div>
+  <p class="help" id="memMsg">Press Start to watch the pattern.</p>
+  <div><button class="btn" id="memStart">Start</button><button class="btn alt" data-go="menu">Menu</button></div>
+</section>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+function show(id) {
+  $$(".screen").forEach(s => s.classList.toggle("active", s.id === id));
+  if (id !== "kGame") Katana.stop();
+  if (id !== "tap") Tap.stop();
+  if (id === "menu") refreshBest();
+}
+$$("[data-go]").forEach(b => b.addEventListener("click", () => {
+  const g = b.dataset.go;
+  show(g === "katana" ? "kDiff" : g);
+}));
+function refreshBest() {
+  const k = store.get("mm_katana", {});
+  const parts = ["easy", "medium", "hard"].filter(d => k[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + k[d]);
+  $("#bestKatana").textContent = parts.length ? "Best: " + parts.join(" · ") : "";
+  const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
+  const m = store.get("mm_mem", 0); $("#bestMemory").textContent = m ? "Best: level " + m : "";
+}
+
+/* ---------- audio ---------- */
+let actx = null;
+function beep(freq, dur = 0.1, type = "sine", vol = 0.15, slideTo) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+const sfx = {
+  snap() { beep(180, 0.12, "sawtooth", 0.2, 60); },
+  slice() { beep(1800, 0.18, "sawtooth", 0.12, 300); },
+  perfect() { beep(880, 0.12, "triangle", 0.18); setTimeout(() => beep(1320, 0.25, "triangle", 0.18), 90); },
+  bad() { beep(120, 0.3, "square", 0.12); }
+};
+
+/* =====================================================
+   KATANA SLICE
+   ===================================================== */
+const Katana = (() => {
+  const cv = $("#cv"), ctx = cv.getContext("2d");
+  const W = 800, H = 560;
+  const ANCHOR = { x: W / 2, y: 40 };
+  const BOX_BOTTOM = 270, FLOOR = 510, GRAV = 600;
+  const ROUNDS = 5;
+  const DIFFS = {
+    easy:   { size: 170, mult: 1 },
+    medium: { size: 100, mult: 1.5 },
+    hard:   { size: 54,  mult: 2 }
+  };
+  const TIERS = [
+    { max: 200, name: "PERFECT!", pts: 1000, color: "#ffc94a" },
+    { max: 300, name: "Great", pts: 400, color: "#4ade80" },
+    { max: 450, name: "Good", pts: 200, color: "#5ab0ff" },
+    { max: 700, name: "OK", pts: 80, color: "#d0d0d0" },
+    { max: Infinity, name: "Slow", pts: 30, color: "#a99d90" }
+  ];
+
+  let diff = "easy", running = false, raf = 0, timer = 0;
+  let round, total, results;
+  let state;          // idle | waiting | falling | result
+  let box, breakAt, particles, halves, flash, bannerText, bannerColor, bannerAt, ropePiece;
+  let trail = [], last = null, mouse = { x: W / 2, y: H - 80 };
+
+  function start(d) {
+    diff = d; round = 0; total = 0; results = [];
+    $("#kDiffLbl").textContent = d[0].toUpperCase() + d.slice(1);
+    show("kGame");
+    running = true;
+    updateHud();
+    nextRound();
+    loop();
+  }
+  function stop() {
+    running = false; cancelAnimationFrame(raf); clearTimeout(timer);
+  }
+  function updateHud() {
+    $("#kRound").textContent = "Round " + Math.min(round, ROUNDS) + "/" + ROUNDS;
+    $("#kScore").textContent = "Score " + total;
+  }
+
+  function nextRound() {
+    round++;
+    updateHud();
+    const size = DIFFS[diff].size;
+    box = { x: W / 2, y: BOX_BOTTOM - size / 2, size, vy: 0, rot: 0, vr: 0, swing: 0 };
+    particles = []; halves = []; flash = null; ropePiece = null; bannerText = ""; breakAt = 0;
+    state = "waiting";
+    const wait = 1500 + Math.random() * 3800;   // random snap time
+    clearTimeout(timer);
+    timer = setTimeout(snapRope, wait);
+  }
+
+  function snapRope() {
+    if (state !== "waiting") return;
+    state = "falling";
+    breakAt = performance.now();
+    sfx.snap();
+    ropePiece = { len: 70, t: 0 };
+    for (let i = 0; i < 14; i++) {
+      particles.push({ x: ANCHOR.x + (Math.random() - .5) * 8, y: ANCHOR.y + 60 + Math.random() * 20,
+        vx: (Math.random() - .5) * 220, vy: -Math.random() * 120, life: .6, c: "#c9a66b", r: 2 });
+    }
+    box.vr = (Math.random() - .5) * 1.2;
+  }
+
+  function endRound(ms, kind) {
+    // kind: "slice" | "early" | "miss"
+    state = "result";
+    let pts = 0, tier = null, label;
+    if (kind === "slice") {
+      tier = TIERS.find(t => ms <= t.max);
+      pts = Math.round(tier.pts * DIFFS[diff].mult);
+      label = tier.name + "  " + Math.round(ms) + "ms  +" + pts;
+      bannerColor = tier.color;
+    } else if (kind === "early") {
+      label = "TOO EARLY!  +0"; bannerColor = "#d7263d"; sfx.bad();
+    } else {
+      label = "MISSED!  +0"; bannerColor = "#d7263d"; sfx.bad();
+    }
+    bannerText = label; bannerAt = performance.now();
+    total += pts;
+    results.push({ kind, ms, pts, tier: tier ? tier.name : kind === "early" ? "Too early" : "Missed" });
+    updateHud();
+    clearTimeout(timer);
+    timer = setTimeout(() => { round >= ROUNDS ? finish() : nextRound(); }, 1500);
+  }
+
+  function finish() {
+    stop();
+    const bests = store.get("mm_katana", {});
+    const isNew = !bests[diff] || total > bests[diff];
+    if (isNew) { bests[diff] = total; store.set("mm_katana", bests); }
+    $("#kTotal").textContent = total;
+    $("#kNew").textContent = isNew ? "New best for " + diff + "!" : "Best for " + diff + ": " + bests[diff];
+    $("#kTable").innerHTML = "<tr><th>#</th><th>Result</th><th>Time</th><th>Pts</th></tr>" +
+      results.map((r, i) => "<tr><td>" + (i + 1) + "</td><td>" + r.tier + "</td><td>" +
+        (r.kind === "slice" ? Math.round(r.ms) + "ms" : "-") + "</td><td>" + r.pts + "</td></tr>").join("");
+    show("kEnd");
+  }
+
+  /* ----- slicing ----- */
+  function segHitsBox(a, b) {
+    // Liang-Barsky against axis aligned bounds (slightly generous)
+    const pad = 2, h = box.size / 2 + pad;
+    const x0 = box.x - h, x1 = box.x + h, y0 = box.y - h, y1 = box.y + h;
+    let t0 = 0, t1 = 1;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const p = [-dx, dx, -dy, dy], q = [a.x - x0, x1 - a.x, a.y - y0, y1 - a.y];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) { if (q[i] < 0) return false; }
+      else {
+        const r = q[i] / p[i];
+        if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; }
+      }
+    }
+    return true;
+  }
+
+  function trySlice(a, b, now, fast) {
+    if (!fast) return;
+    if (state !== "waiting" && state !== "falling") return;
+    if (!segHitsBox(a, b)) return;
+    if (state === "waiting") {
+      // swung at a box whose rope hasn't snapped yet
+      clearTimeout(timer);
+      flash = { a, b, t: now };
+      sliceBox(a, b, "#d7263d");
+      endRound(0, "early");
+      return;
+    }
+    const ms = now - breakAt;
+    flash = { a, b, t: now };
+    sliceBox(a, b, ms <= 200 ? "#ffc94a" : "#fff");
+    ms <= 200 ? sfx.perfect() : sfx.slice();
+    endRound(ms, "slice");
+  }
+
+  function sliceBox(a, b, col) {
+    sfx.slice();
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const nx = -Math.sin(ang), ny = Math.cos(ang);
+    for (const side of [1, -1]) {
+      halves.push({ x: box.x, y: box.y, rot: box.rot, size: box.size, ang, side,
+        vx: nx * side * 160 + (Math.random() - .5) * 40, vy: ny * side * 160 - 80,
+        vr: side * (1 + Math.random() * 2) });
+    }
+    const n = 26;
+    for (let i = 0; i < n; i++) {
+      const a2 = Math.random() * Math.PI * 2, s = 100 + Math.random() * 320;
+      particles.push({ x: box.x, y: box.y, vx: Math.cos(a2) * s, vy: Math.sin(a2) * s - 60,
+        life: .5 + Math.random() * .4, c: col, r: 2 + Math.random() * 3 });
+    }
+    box.sliced = true;
+  }
+
+  /* ----- input ----- */
+  function pos(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+  }
+  cv.addEventListener("pointermove", e => {
+    const p = pos(e), now = performance.now();
+    mouse = p;
+    trail.push({ x: p.x, y: p.y, t: now });
+    if (trail.length > 14) trail.shift();
+    if (last) {
+      const dt = Math.max(now - last.t, 8) / 1000;
+      const speed = Math.hypot(p.x - last.x, p.y - last.y) / dt;
+      if (running) trySlice(last, p, now, speed > 450);
+    }
+    last = { x: p.x, y: p.y, t: now };
+  });
+  cv.addEventListener("pointerdown", e => {
+    const p = pos(e), now = performance.now();
+    mouse = p; trail = [{ x: p.x, y: p.y, t: now }]; last = { x: p.x, y: p.y, t: now };
+    // a plain click counts as a quick vertical slash through the click point
+    if (running) trySlice({ x: p.x, y: p.y - 14 }, { x: p.x, y: p.y + 14 }, now, true);
+  });
+  cv.addEventListener("pointerleave", () => { last = null; });
+
+  /* ----- loop ----- */
+  let prev = 0;
+  function loop(ts = performance.now()) {
+    if (!running) return;
+    const dt = Math.min((ts - prev) / 1000 || 0.016, 0.05); prev = ts;
+    update(dt, ts);
+    draw(ts);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function update(dt, now) {
+    if (state === "waiting") {
+      box.swing = Math.sin(now / 700) * 0.015; // gentle sway, gives no hint about timing
+      box.x = W / 2 + Math.sin(now / 700) * 3;
+    } else if (state === "falling" && !box.sliced) {
+      box.vy += GRAV * dt;
+      box.y += box.vy * dt;
+      box.rot += box.vr * dt;
+      if (box.y + box.size / 2 >= FLOOR) {
+        box.y = FLOOR - box.size / 2;
+        for (let i = 0; i < 18; i++) particles.push({ x: box.x + (Math.random() - .5) * box.size, y: FLOOR,
+          vx: (Math.random() - .5) * 260, vy: -Math.random() * 200, life: .5, c: "#8a7a6a", r: 3 });
+        endRound(0, "miss");
+        box.landed = true;
+      }
+    }
+    if (ropePiece) ropePiece.t += dt;
+    halves.forEach(h => { h.vy += GRAV * dt; h.x += h.vx * dt; h.y += h.vy * dt; h.rot += h.vr * dt; });
+    particles.forEach(p => { p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; });
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  function drawBox(b, alpha = 1) {
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.rot + (b.swing || 0));
+    ctx.globalAlpha = alpha;
+    const s = b.size, h = s / 2;
+    ctx.fillStyle = "#b9803f"; ctx.fillRect(-h, -h, s, s);
+    ctx.strokeStyle = "#6b4620"; ctx.lineWidth = Math.max(2, s / 18); ctx.strokeRect(-h, -h, s, s);
+    ctx.beginPath(); ctx.moveTo(-h, -h); ctx.lineTo(h, h); ctx.moveTo(h, -h); ctx.lineTo(-h, h); ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw(now) {
+    // background
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#2a1f2f"); g.addColorStop(1, "#4a2c2a");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // moon
+    ctx.fillStyle = "#f3e9d2"; ctx.beginPath(); ctx.arc(660, 110, 44, 0, 7); ctx.fill();
+    // beam + floor
+    ctx.fillStyle = "#1a1210"; ctx.fillRect(0, 0, W, ANCHOR.y);
+    ctx.fillStyle = "#3a2b22"; ctx.fillRect(W / 2 - 14, ANCHOR.y - 6, 28, 14);
+    ctx.fillStyle = "#1a1210"; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    ctx.strokeStyle = "#5a3d30"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(W, FLOOR); ctx.stroke();
+
+    // rope
+    ctx.strokeStyle = "#c9a66b"; ctx.lineWidth = 5; ctx.lineCap = "round";
+    if (state === "waiting") {
+      ctx.beginPath(); ctx.moveTo(ANCHOR.x, ANCHOR.y + 6);
+      ctx.lineTo(box.x, box.y - box.size / 2); ctx.stroke();
+    } else if (ropePiece) {
+      const sw = Math.sin(ropePiece.t * 9) * 10 * Math.exp(-ropePiece.t * 2);
+      ctx.beginPath(); ctx.moveTo(ANCHOR.x, ANCHOR.y + 6);
+      ctx.quadraticCurveTo(ANCHOR.x + sw, ANCHOR.y + 40, ANCHOR.x + sw * 1.4, ANCHOR.y + ropePiece.len);
+      ctx.stroke();
+      // frayed end
+      ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath(); ctx.moveTo(ANCHOR.x + sw * 1.4, ANCHOR.y + ropePiece.len);
+        ctx.lineTo(ANCHOR.x + sw * 1.4 + i * 4, ANCHOR.y + ropePiece.len + 9); ctx.stroke();
+      }
+    }
+
+    // box or halves
+    if (!box.sliced) {
+      if (state === "falling" || state === "waiting" || box.landed || state === "result") drawBox(box);
+    }
+    halves.forEach(h => {
+      const s = h.size, hh = s / 2;
+      ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.rot);
+      ctx.beginPath();
+      // clip: half plane through center along slice direction
+      const R = s * 2, c = Math.cos(h.ang - h.rot), sn = Math.sin(h.ang - h.rot);
+      const nx = -sn * h.side, ny = c * h.side;
+      ctx.moveTo(-c * R, -sn * R); ctx.lineTo(c * R, sn * R);
+      ctx.lineTo(c * R + nx * R, sn * R + ny * R); ctx.lineTo(-c * R + nx * R, -sn * R + ny * R);
+      ctx.closePath(); ctx.clip();
+      ctx.fillStyle = "#b9803f"; ctx.fillRect(-hh, -hh, s, s);
+      ctx.strokeStyle = "#6b4620"; ctx.lineWidth = Math.max(2, s / 18); ctx.strokeRect(-hh, -hh, s, s);
+      ctx.restore();
+    });
+
+    // particles
+    particles.forEach(p => { ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2)); ctx.fillStyle = p.c;
+      ctx.fillRect(p.x, p.y, p.r, p.r); });
+    ctx.globalAlpha = 1;
+
+    // slash flash
+    if (flash) {
+      const age = now - flash.t;
+      if (age < 220) {
+        ctx.globalAlpha = 1 - age / 220; ctx.strokeStyle = "#fff"; ctx.lineWidth = 6;
+        const dx = flash.b.x - flash.a.x, dy = flash.b.y - flash.a.y, l = Math.hypot(dx, dy) || 1;
+        ctx.beginPath(); ctx.moveTo(flash.a.x - dx / l * 120, flash.a.y - dy / l * 120);
+        ctx.lineTo(flash.b.x + dx / l * 120, flash.b.y + dy / l * 120); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // prompt
+    ctx.textAlign = "center";
+    if (state === "waiting") {
+      ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = "bold 26px Trebuchet MS, sans-serif";
+      ctx.fillText("Wait for the rope to snap...", W / 2, H - 20);
+    }
+    if (state === "falling" && !box.sliced) {
+      ctx.fillStyle = "#ffc94a"; ctx.font = "bold 44px Trebuchet MS, sans-serif";
+      ctx.fillText("SLICE!", W / 2, 110);
+    }
+    if (state === "result" && bannerText) {
+      const k = Math.min(1, (now - bannerAt) / 150);
+      ctx.save(); ctx.translate(W / 2, 140); ctx.scale(.8 + .2 * k, .8 + .2 * k);
+      ctx.font = "800 " + (bannerText.startsWith("PERFECT") ? 54 : 40) + "px Trebuchet MS, sans-serif";
+      ctx.lineWidth = 6; ctx.strokeStyle = "#000"; ctx.strokeText(bannerText, 0, 0);
+      ctx.fillStyle = bannerColor; ctx.fillText(bannerText, 0, 0);
+      ctx.restore();
+    }
+
+    drawKatana(now);
+  }
+
+  function drawKatana(now) {
+    // blade trail
+    trail = trail.filter(p => now - p.t < 160);
+    for (let i = 1; i < trail.length; i++) {
+      const a = trail[i - 1], b = trail[i], k = 1 - (now - b.t) / 160;
+      ctx.strokeStyle = "rgba(220,240,255," + (k * .9) + ")"; ctx.lineWidth = 10 * k;
+      ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // katana cursor drawn at the pointer, angled
+    ctx.save(); ctx.translate(mouse.x, mouse.y); ctx.rotate(-Math.PI / 4);
+    ctx.fillStyle = "#cfd8e3"; ctx.beginPath();           // blade
+    ctx.moveTo(0, -3); ctx.lineTo(-70, -2); ctx.lineTo(-78, 2); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ffc94a"; ctx.fillRect(0, -7, 5, 14);   // guard
+    ctx.fillStyle = "#222"; ctx.fillRect(5, -3.5, 32, 7);    // handle
+    ctx.strokeStyle = "#d7263d"; ctx.lineWidth = 2;
+    for (let x = 8; x < 36; x += 6) { ctx.beginPath(); ctx.moveTo(x, -3.5); ctx.lineTo(x + 4, 3.5); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  $("#kAgain").addEventListener("click", () => start(diff));
+  $$("#kDiff .diff").forEach(b => b.addEventListener("click", () => start(b.dataset.d)));
+
+  return { start, stop };
+})();
+
+/* =====================================================
+   TARGET TAP
+   ===================================================== */
+const Tap = (() => {
+  const area = $("#tapArea");
+  let hits, left, tick, active, size;
+  function stop() { active = false; clearInterval(tick); area.innerHTML = ""; }
+  function spawn() {
+    area.innerHTML = "";
+    if (!active) return;
+    const r = area.getBoundingClientRect();
+    const x = Math.random() * (r.width - size), y = Math.random() * (r.height - size);
+    const t = document.createElement("button");
+    t.className = "tgt"; t.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px`;
+    t.addEventListener("pointerdown", e => {
+      e.preventDefault(); hits++; beep(700 + hits * 8, 0.06, "triangle", 0.12);
+      size = Math.max(26, size - 2);
+      $("#tapScore").textContent = "Hits " + hits; spawn();
+    });
+    area.appendChild(t);
+  }
+  $("#tapStart").addEventListener("click", () => {
+    stop(); active = true; hits = 0; left = 20; size = 80;
+    $("#tapScore").textContent = "Hits 0"; $("#tapTime").textContent = "Time 20";
+    $("#tapMsg").textContent = "Go!";
+    spawn();
+    tick = setInterval(() => {
+      left--; $("#tapTime").textContent = "Time " + left;
+      if (left <= 0) {
+        const n = hits; stop();
+        const best = store.get("mm_tap", 0);
+        if (n > best) store.set("mm_tap", n);
+        $("#tapMsg").textContent = "Time! You hit " + n + (n > best ? " (new best!)" : " (best " + best + ")");
+      }
+    }, 1000);
+  });
+  return { stop };
+})();
+
+/* =====================================================
+   PATTERN MEMORY
+   ===================================================== */
+(() => {
+  const pads = $$(".pad");
+  const notes = [330, 440, 550, 660];
+  let seq = [], idx = 0, accepting = false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function light(i, ms = 380) {
+    pads[i].classList.add("lit"); beep(notes[i], ms / 1000, "triangle", 0.2);
+    await sleep(ms); pads[i].classList.remove("lit"); await sleep(140);
+  }
+  async function playSeq() {
+    accepting = false; $("#memMsg").textContent = "Watch...";
+    await sleep(500);
+    for (const i of seq) await light(i, Math.max(180, 380 - seq.length * 8));
+    idx = 0; accepting = true; $("#memMsg").textContent = "Your turn!";
+  }
+  function grow() { seq.push(Math.floor(Math.random() * 4)); $("#memLvl").textContent = "Level " + seq.length; playSeq(); }
+  $("#memStart").addEventListener("click", () => { seq = []; grow(); });
+  pads.forEach(p => p.addEventListener("pointerdown", async () => {
+    if (!accepting) return;
+    const i = +p.dataset.i;
+    if (i !== seq[idx]) {
+      accepting = false; sfx.bad();
+      const lvl = seq.length - 1, best = store.get("mm_mem", 0);
+      if (lvl > best) store.set("mm_mem", lvl);
+      $("#memMsg").textContent = "Wrong pad. You cleared " + lvl + " level" + (lvl === 1 ? "" : "s") + (lvl > best ? " (new best!)" : " (best " + best + ")");
+      return;
+    }
+    light(i, 200); idx++;
+    if (idx === seq.length) { accepting = false; await sleep(700); grow(); }
+  }));
+})();
+
+refreshBest();
+</script>
+</body>
+</html>
