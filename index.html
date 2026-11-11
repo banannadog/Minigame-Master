@@ -93,6 +93,11 @@
   .tdu.sel { border-color: var(--gold); background: #2e2620; }
   .tdu:disabled { opacity: .45; cursor: not-allowed; }
   [hidden] { display: none !important; }
+  .hud span.score { color: var(--gold); }
+  .stats { display: grid; gap: 8px; width: 100%; max-width: 800px; margin-top: 10px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .stats div { background: var(--panel); padding: 8px 10px; box-shadow: 3px 3px 0 #000; }
+  .stats small { display: block; color: var(--muted); font-size: .5rem; margin-bottom: 4px; }
+  .stats b { font-size: .75rem; color: var(--ink); font-weight: 400; }
   .tdpanel { width: 100%; max-width: 800px; margin: 10px 0 0; }
   .tdpanel b { display: block; font-size: .7rem; color: var(--gold); margin-bottom: 8px; }
   /* side games */
@@ -227,7 +232,7 @@
 
 <!-- STICK DEFENSE -->
 <section id="tdGame" class="screen">
-  <div class="hud"><span id="tdWave">Wave 0</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 30</span><span id="tdPts">Points 0</span></div>
+  <div class="hud"><span id="tdScore" class="score">Score 0</span><span id="tdWave">Wave 0</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 30</span><span id="tdPts">Points 0</span></div>
   <canvas id="tv" width="200" height="140"></canvas>
   <div class="actions">
     <button class="btn big" id="tdStart">START WAVE 1</button>
@@ -239,6 +244,7 @@
     <button class="tdb" data-t="fast"></button><button class="tdb" data-t="wizard"></button>
     <button class="tdb" data-t="sell"></button>
   </div>
+  <div class="stats" id="tdStats"></div>
   <div id="tdPanel" class="tdpanel" hidden>
     <b id="tdPanelName"></b>
     <div class="shop">
@@ -316,7 +322,7 @@ function refreshBest() {
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
   const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
-  const tb = store.get("mm_td", 0); $("#bestTD").textContent = tb ? "Best: wave " + tb : "";
+  const tb = store.get("mm_td", 0); $("#bestTD").textContent = tb ? "Best: wave " + tb + " · score " + store.get("mm_td_score", 0) : "";
   $("#bestSnow").textContent = sp.length ? "Wins: " + sp.join(" · ") : "";
   const m = store.get("mm_mem", 0); $("#bestMemory").textContent = m ? "Best: level " + m : "";
 }
@@ -1083,11 +1089,16 @@ const TD = (() => {
     tank:   { hp: 36,  spd: 48,  rew: 20,  size: 42, col: "#8a7a6a", life: 2 },
     boss:   { hp: 1000, spd: 30, rew: 300, size: 58, col: "#ff004d", life: 5 }
   };
+  // score: kills, a bonus for each cleared wave, minus a penalty for every life lost
+  const SCORE = { blob: 10, runner: 15, tank: 50, boss: 500 };
+  const RANKS = [[0, "Rookie"], [500, "Soldier"], [2000, "Veteran"], [6000, "Hero"], [15000, "Legend"]];
+  const rankOf = n => RANKS.filter(r => n >= r[0]).pop()[1];
   const TUFTS = Array.from({ length: 60 }, () => ({ x: Math.random() * W, y: Math.random() * H }));
 
   let running = false, raf = 0, prev = 0, endTimer = 0;
   let coins, lives, wave, waveActive, queue, spawnT, spawnGap, enemies, towers, fx, floats;
   let kills, earned, built, speed, sel, hover, over, won, banner, pts, selTower;
+  let score, lost, bossKills, dealt, bestScore;
 
   function pointAt(d) {
     let i = 1;
@@ -1099,7 +1110,8 @@ const TD = (() => {
   function start() {
     coins = 30; lives = 15; wave = 0; waveActive = false; queue = []; spawnT = 0; spawnGap = 1;
     enemies = []; towers = PADS.map(() => null); fx = []; floats = [];
-    kills = 0; earned = 0; built = 0; pts = 0; selTower = -1; speed = 1; sel = "stick"; hover = -1; over = false; won = false; banner = "";
+    kills = 0; earned = 0; built = 0; pts = 0; selTower = -1; speed = 1;
+    score = 0; lost = 0; bossKills = 0; dealt = 0; bestScore = store.get("mm_td_score", 0); sel = "stick"; hover = -1; over = false; won = false; banner = "";
     show("tdGame");
     stop(); running = true; prev = performance.now();
     loop();
@@ -1130,9 +1142,11 @@ const TD = (() => {
 
   function damage(e, d) {
     if (e.dead) return;
+    dealt += Math.min(d, Math.max(0, e.hp));
     e.hp -= d;
     if (e.hp <= 0) {
       e.dead = true; kills++;
+      score += SCORE[e.type]; if (e.type === "boss") bossKills++;
       if (kills % 5 === 0) { pts += 10; floats.push({ x: e.x, y: e.y - 56, txt: "+10 PTS", life: 1.1, c: "#5ab0ff" }); beep(880, 0.18, "triangle", 0.15, 1320); }
       const r = ENEMY[e.type].rew; coins += r; earned += r;
       floats.push({ x: e.x, y: e.y - 30, txt: "+" + r, life: 0.8, c: "#ffc94a" });
@@ -1251,8 +1265,10 @@ const TD = (() => {
       stop();
       const reached = Math.max(0, wave - 1);
       const best = store.get("mm_td", 0); if (reached > best) store.set("mm_td", reached);
+      const newBest = score > bestScore; if (newBest) store.set("mm_td_score", score);
       $("#tdEndTitle").textContent = win ? "Victory!" : "Base destroyed";
-      $("#tdEndTable").innerHTML = "<tr><td>Waves cleared</td><td>" + reached + "</td></tr>" +
+      $("#tdEndTable").innerHTML = "<tr><td>Score</td><td>" + score + (newBest ? " (new best!)" : "") + "</td></tr><tr><td>Rank</td><td>" + rankOf(score) + "</td></tr>" +
+        "<tr><td>Waves cleared</td><td>" + reached + "</td></tr>" +
         "<tr><td>Enemies defeated</td><td>" + kills + "</td></tr><tr><td>Coins earned</td><td>" + earned + "</td></tr>" +
         "<tr><td>Helpers placed</td><td>" + built + "</td></tr>";
       show("tdEnd");
@@ -1266,7 +1282,7 @@ const TD = (() => {
       if (e.slow > 0) e.slow -= dt;
       e.s += ENEMY[e.type].spd * (e.slow > 0 ? 0.45 : 1) * dt;
       if (e.s >= TOTAL) {
-        e.dead = true; lives -= ENEMY[e.type].life;
+        e.dead = true; lives -= ENEMY[e.type].life; lost += ENEMY[e.type].life; score = Math.max(0, score - 25 * ENEMY[e.type].life);
         floats.push({ x: 300, y: 440, txt: "-" + ENEMY[e.type].life, life: 1, c: "#ff004d" }); beep(100, 0.25, "sawtooth", 0.15, 50);
         if (lives <= 0 && !over) { lives = 0; finish(false); }
         continue;
@@ -1287,7 +1303,7 @@ const TD = (() => {
     enemies = enemies.filter(e => !e.dead);
     if (waveActive && !queue.length && !enemies.length && !over) {
       waveActive = false;
-      { coins += 30; earned += 30; pts += 2; banner = "WAVE " + wave + " CLEARED +2 PTS"; beep(660, 0.2, "triangle", 0.15, 990); }
+      { coins += 30; earned += 30; pts += 2; score += 100 * wave; banner = "WAVE " + wave + " CLEARED +2 PTS"; beep(660, 0.2, "triangle", 0.15, 990); }
     }
     fx.forEach(f => { f.life -= dt; }); fx = fx.filter(f => f.life > 0);
     floats.forEach(f => { f.y -= 50 * dt; f.life -= dt; }); floats = floats.filter(f => f.life > 0);
@@ -1299,6 +1315,13 @@ const TD = (() => {
     $("#tdLives").textContent = "Lives " + lives;
     $("#tdCoins").textContent = "Coins " + coins;
     $("#tdPts").textContent = "Points " + pts;
+    $("#tdScore").textContent = "Score " + score;
+    const cleared = Math.max(0, wave - (waveActive ? 1 : 0));
+    const stats = [["Rank", rankOf(score)], ["Kills", kills], ["Waves cleared", cleared], ["Boss kills", bossKills],
+      ["Lives lost", lost], ["Damage dealt", dealt], ["Coins earned", earned], ["Helpers placed", built],
+      ["Best score", Math.max(bestScore, score)]];
+    const sh = stats.map(r => "<div><small>" + r[0] + "</small><b>" + r[1] + "</b></div>").join("");
+    if ($("#tdStats").dataset.h !== sh) { $("#tdStats").innerHTML = sh; $("#tdStats").dataset.h = sh; }
     const st = selTower >= 0 ? towers[selTower] : null, panel = $("#tdPanel");
     panel.hidden = !st;
     if (st) {
