@@ -168,7 +168,7 @@
 <!-- SNOW FIGHT: game -->
 <section id="sGame" class="screen">
   <div class="hud"><span id="sRound">Round 1</span><span id="sHp">You 20 · Bot 20</span><span id="sPts">Points 0</span></div>
-  <div class="hud"><span id="sBalls">Snowballs 0</span><span id="sTime">Time 5</span></div>
+  <div class="hud"><span id="sBalls">Snowballs 0</span><span id="sTime">Time 5</span><span id="sBotUp"></span></div>
   <canvas id="sv" width="200" height="140"></canvas>
   <div class="actions">
     <button class="btn big" id="sSpam">SPAM!</button>
@@ -700,7 +700,7 @@ const Snow = (() => {
   const STARS = Array.from({ length: 22 }, () => ({ x: Math.random() * W, y: Math.random() * 260 }));
 
   let diff = "easy", running = false, raf = 0, prev = 0, phase = "idle", round = 0, timeLeft = 0;
-  let me, bot, shots = [], parts = [], floats = [], botQ = 0, botT = 0, botDelay = 0, endTimer = 0;
+  let me, bot, botBought = [], shots = [], parts = [], floats = [], botQ = 0, botT = 0, botDelay = 0, endTimer = 0;
   let aim = { x: 560, y: 420 };
 
   const fighter = () => ({ hp: 20, maxHp: 20, pts: 0, hits: 0, flash: 0, throwT: 0, balls: 0, prog: 0, shield: 0,
@@ -714,7 +714,7 @@ const Snow = (() => {
 
   function start(d) {
     diff = d; me = fighter(); bot = fighter(); round = 0;
-    shots = []; parts = []; floats = []; botQ = 0;
+    shots = []; parts = []; floats = []; botQ = 0; botBought = [];
     show("sGame");
     running = true; prev = performance.now();
     startBuild();
@@ -730,9 +730,11 @@ const Snow = (() => {
     return true;
   }
   function botBuy() {
+    const got = [];
     for (;;) {
       const next = ["aim", "fast", "health", "strong", "tall"].filter(k => bot.lv[k] < MAXLV).sort((a, b) => bot.lv[a] - bot.lv[b])[0];
-      if (!next || !buy(bot, next)) return;
+      if (!next || !buy(bot, next)) return got;
+      got.push(next);
     }
   }
 
@@ -749,8 +751,9 @@ const Snow = (() => {
     if (me.balls <= 0) startBot(); else phase = "aim";
   }
   function startBot() {
-    phase = "bot"; botBuy();
-    botQ = BOTS[diff].balls + bot.lv.fast; botDelay = 1; botT = 0;
+    phase = "bot"; botBought = botBuy();
+    botQ = BOTS[diff].balls + bot.lv.fast; botDelay = botBought.length ? 2 : 1; botT = 0;
+    if (botBought.length) beep(520, 0.15, "triangle", 0.12, 780);
   }
   function finish(winner) {
     phase = "over"; botQ = 0;
@@ -874,6 +877,7 @@ const Snow = (() => {
     $("#sRound").textContent = "Round " + round;
     $("#sHp").textContent = "You " + Math.ceil(me.hp) + " · Bot " + Math.ceil(bot.hp);
     $("#sPts").textContent = "Points " + me.pts;
+    const bl = bot.lv; $("#sBotUp").textContent = "Bot upgrades: Tall " + bl.tall + " · Str " + bl.strong + " · HP " + bl.health + " · Aim " + bl.aim + " · Fast " + bl.fast;
     $("#sBalls").textContent = "Snowballs " + me.balls;
     $("#sTime").textContent = phase === "build" ? "Time " + Math.ceil(timeLeft) : phase === "aim" ? "Throw!" : phase === "bot" ? "Bot turn" : "";
     spamBtn.disabled = phase !== "build";
@@ -959,7 +963,10 @@ const Snow = (() => {
 
     if (phase === "build") { label("SPAM THE BUTTON!", W / 2, 60, "#ffc94a"); label("SNOWBALLS " + me.balls, W / 2, 110, "#fff1e8"); }
     else if (phase === "aim") { label("AIM + CLICK TO THROW", W / 2, 60, "#ffc94a"); label("BALLS LEFT " + me.balls, W / 2, 110, "#fff1e8"); }
-    else if (phase === "bot") label(botDelay > 0 ? "BOT MAKES SNOWBALLS" : "BOT IS THROWING!", W / 2, 60, "#ff004d");
+    else if (phase === "bot") {
+      label(botDelay > 0 ? "BOT MAKES SNOWBALLS" : "BOT IS THROWING!", W / 2, 60, "#ff004d");
+      if (botDelay > 0) botBought.forEach((k, i) => label("+ " + NAMES[k].toUpperCase(), W / 2, 110 + i * 40, "#ffa300"));
+    }
     else if (phase === "over") label(bot.hp <= 0 ? "YOU WIN!" : "YOU LOSE", W / 2, 230, bot.hp <= 0 ? "#ffc94a" : "#ff004d", 64);
 
     if (phase === "aim") {
