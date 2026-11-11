@@ -155,6 +155,11 @@
       <p>Shoot medium targets for 1 point. Small golden targets pop up at random and are worth 5.</p>
       <div class="best" id="bestHit"></div>
     </button>
+    <button class="card" data-go="pkGame">
+      <canvas class="ico" data-ico="runner" width="12" height="12"></canvas><h3>Parkour Sprint</h3>
+      <p>Run through the city and jump over rocks and cars. Hold the jump for a higher leap.</p>
+      <div class="best" id="bestParkour"></div>
+    </button>
     <button class="card" data-go="tap">
       <canvas class="ico" data-ico="target" width="12" height="12"></canvas><h3>Target Tap</h3>
       <p>Hit as many targets as you can in 20 seconds. They shrink the longer you survive.</p>
@@ -346,6 +351,25 @@
   </div>
 </section>
 
+<!-- PARKOUR SPRINT -->
+<section id="pkGame" class="screen">
+  <div class="hud"><span id="pkDist">Distance 0 m</span><span id="pkSpeed">Speed x1.0</span><span id="pkBest">Best 0 m</span></div>
+  <canvas id="pv" width="200" height="140"></canvas>
+  <p class="help">You run on your own. Press Space, the up arrow, or tap the screen to jump. Hold for a higher jump.</p>
+  <button class="btn alt" data-go="menu">Exit</button>
+</section>
+
+<section id="pkEnd" class="screen">
+  <div class="summary">
+    <h2 id="pkEndTitle">You crashed!</h2>
+    <div class="big" id="pkEndDist">0 m</div>
+    <div id="pkEndNew" style="color:var(--green);min-height:1.4em"></div>
+    <table id="pkEndTable"></table>
+    <button class="btn" id="pkAgain">Run again</button>
+    <button class="btn alt" data-go="menu">Menu</button>
+  </div>
+</section>
+
 <!-- TARGET TAP -->
 <section id="tap" class="screen">
   <h2><canvas class="ico sm" data-ico="target" width="12" height="12"></canvas> Target Tap</h2>
@@ -384,6 +408,7 @@ function show(id) {
   if (id !== "tdGame") TD.stop();
   if (id !== "mcGame") Climb.stop();
   if (id !== "htGame") Hit.stop();
+  if (id !== "pkGame") Parkour.stop();
   if (id === "menu") refreshBest();
 }
 $$("[data-go]").forEach(b => b.addEventListener("click", () => {
@@ -400,6 +425,7 @@ function refreshBest() {
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
   const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
+  const pb = store.get("mm_parkour", 0); $("#bestParkour").textContent = pb ? "Best: " + pb + " m" : "";
   const hb = store.get("mm_hit", 0); $("#bestHit").textContent = hb ? "Best: " + hb + " points" : "";
   const cl = store.get("mm_climb", {});
   const cp = ["easy", "medium", "hard"].filter(d => cl[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + cl[d] + "m");
@@ -2008,6 +2034,231 @@ const Hit = (() => {
 })();
 
 /* =====================================================
+   PARKOUR SPRINT
+   ===================================================== */
+const Parkour = (() => {
+  const cv = $("#pv"), ctx = cv.getContext("2d");
+  const W = 800, H = 560, PX = 4, GY = 450, RX = 180;           // ground line and the runner's fixed x
+  const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
+  const GRAV = 2600, JUMP = 1000, CUT = 380;                     // a full jump is about 192px high; letting go early cuts it short
+  const CAR_COLORS = ["#ff004d", "#29adff", "#ffec27", "#00e436", "#ffa300"];
+  const hash = n => { n = Math.imul(n ^ 61, 0x9e3779b1); n ^= n >>> 15; n = Math.imul(n, 0x85ebca6b); n ^= n >>> 13; return (n >>> 0) / 4294967296; };
+
+  let running = false, raf = 0, prev = 0, endTimer = 0;
+  let state, t, dist, speed, y, vy, held, buf, obs, nextGap, cleared, cars, rocks, far, mid, street, parts, crash, tick, last100;
+
+  const speedAt = time => 380 + Math.min(520, time * 5);
+
+  function start() {
+    stop();
+    state = "ready"; t = 0; dist = 0; speed = speedAt(0); y = GY; vy = 0; held = false; buf = 0;
+    obs = []; nextGap = 900; cleared = 0; cars = 0; rocks = 0; far = 0; mid = 0; street = 0; parts = []; crash = null; tick = 0; last100 = 0;
+    $("#pkBest").textContent = "Best " + store.get("mm_parkour", 0) + " m";
+    show("pkGame");
+    running = true; prev = performance.now();
+    loop();
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); clearTimeout(endTimer); }
+
+  /* ----- input ----- */
+  function press() {
+    if (!running) return;
+    if (state === "ready") { state = "run"; }
+    if (state !== "run") return;
+    held = true; buf = 0.12;
+  }
+  function release() { held = false; }
+  cv.addEventListener("pointerdown", e => { e.preventDefault(); press(); });
+  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointerleave", release);
+  document.addEventListener("keydown", e => {
+    if (!running || !(e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW")) return;
+    e.preventDefault(); if (!e.repeat) press();
+  });
+  document.addEventListener("keyup", e => {
+    if (running && (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW")) { e.preventDefault(); release(); }
+  });
+  $("#pkAgain").addEventListener("click", start);
+  $('[data-go="pkGame"]').addEventListener("click", start);
+
+  /* ----- obstacles ----- */
+  function spawn() {
+    const car = Math.random() < 0.42 + Math.min(0.2, t / 300);
+    let o;
+    if (car) o = { type: "car", x: W + 60, w: 120, h: 60, color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)] };
+    else { const two = Math.random() < 0.3; o = { type: "rock", x: W + 60, w: two ? 110 : 56, h: 46, n: two ? 2 : 1 }; }
+    o.passed = false; obs.push(o);
+    nextGap = o.w + speed * (0.9 + Math.random() * 0.9);          // always room to land and jump again
+  }
+
+  /* ----- loop ----- */
+  function loop(ts = performance.now()) {
+    if (!running) return;
+    const dt = Math.min((ts - prev) / 1000 || 0.016, 0.05); prev = ts;
+    update(dt); draw(ts); hud();
+    raf = requestAnimationFrame(loop);
+  }
+  function update(dt) {
+    tick += dt;
+    if (state === "ready") { far += 30 * dt; mid += 60 * dt; street += 120 * dt; return; }
+    if (state === "run") {
+      t += dt; speed = speedAt(t);
+      const dx = speed * dt;
+      dist += dx / 60; far += dx * 0.12; mid += dx * 0.3; street += dx;
+      // jumping: buffered presses count for a moment, letting go early cuts the jump short
+      buf = Math.max(0, buf - dt);
+      if (y >= GY && buf > 0) { vy = -JUMP; y = GY - 1; buf = 0; beep(420, 0.12, "square", 0.08, 700); }
+      if (!held && vy < -CUT) vy = -CUT;
+      vy += GRAV * dt; y += vy * dt;
+      if (y >= GY) { y = GY; vy = 0; }
+      nextGap -= dx;
+      if (nextGap <= 0) spawn();
+      for (const o of obs) {
+        o.x -= dx;
+        if (!o.passed && o.x + o.w < RX - 14) { o.passed = true; cleared++; if (o.type === "car") cars++; else rocks++; }
+      }
+      obs = obs.filter(o => o.x + o.w > -40);
+      // collision: the runner is a narrow box; obstacles get a little forgiveness on the edges
+      for (const o of obs) {
+        const left = o.x + 6, right = o.x + o.w - 6, top = GY - o.h + 4;
+        if (RX + 11 > left && RX - 11 < right && y > top) { crashNow(); break; }
+      }
+      if (Math.floor(dist / 100) > last100) { last100 = Math.floor(dist / 100); beep(880, 0.15, "triangle", 0.12, 1320); }
+    }
+    if (state === "crashed") {
+      crash.vy += GRAV * dt; crash.x += crash.vx * dt; crash.y += crash.vy * dt; crash.rot += 8 * dt;
+      if (crash.y > GY) { crash.y = GY; crash.vy *= -0.3; crash.vx *= 0.6; }
+    }
+    parts.forEach(q => { q.vy += 900 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; });
+    parts = parts.filter(q => q.life > 0);
+  }
+  function crashNow() {
+    state = "crashed";
+    crash = { x: RX, y, vx: -260, vy: -520, rot: 0 };
+    for (let i = 0; i < 16; i++) parts.push({ x: RX, y: y - 30, vx: (Math.random() - .5) * 500, vy: -Math.random() * 400, life: 0.6, r: 8 });
+    beep(140, 0.5, "sawtooth", 0.2, 40);
+    endTimer = setTimeout(showEnd, 1400);
+  }
+  function showEnd() {
+    stop();
+    const m = Math.floor(dist), best = store.get("mm_parkour", 0), isNew = m > best;
+    if (isNew) store.set("mm_parkour", m);
+    $("#pkEndDist").textContent = m + " m";
+    $("#pkEndNew").textContent = isNew ? "New best!" : "Best: " + best + " m";
+    $("#pkEndTable").innerHTML = "<tr><td>Obstacles cleared</td><td>" + cleared + "</td></tr><tr><td>Cars jumped</td><td>" + cars + "</td></tr>" +
+      "<tr><td>Rocks jumped</td><td>" + rocks + "</td></tr><tr><td>Top speed</td><td>x" + (speed / 380).toFixed(1) + "</td></tr>";
+    show("pkEnd");
+  }
+  function hud() {
+    $("#pkDist").textContent = "Distance " + Math.floor(dist) + " m";
+    $("#pkSpeed").textContent = "Speed x" + (speed / 380).toFixed(1);
+  }
+
+  /* ----- drawing ----- */
+  function label(txt, x, yy, color, size = 32) {
+    ctx.font = size + "px " + FONT; ctx.textAlign = "center";
+    ctx.lineWidth = 8; ctx.lineJoin = "round"; ctx.strokeStyle = "#0f1b33"; ctx.strokeText(txt, x, yy);
+    ctx.fillStyle = color; ctx.fillText(txt, x, yy);
+  }
+  function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  function drawCity() {
+    ["#1d2b53", "#1d2b53", "#3b6ea5", "#6aa7d8", "#ffa300"].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * GY / 5, W, GY / 5 + 1); });
+    ctx.fillStyle = "#fff1e8"; ctx.fillRect(620, 70, 40, 40);                      // moon
+    // far and middle skylines, built from a fixed list so they scroll smoothly
+    const layer = (off, seed, minW, maxW, minH, maxH, color, windows) => {
+      const period = 2400, o = off % period;
+      let x = -o, i = 0;
+      while (x < W + 300 + period) {
+        const w = minW + hash(seed + (i % 24)) * (maxW - minW), h = minH + hash(seed + (i % 24) + 77) * (maxH - minH);
+        if (x + w > -10 && x < W + 10) {
+          ctx.fillStyle = color; ctx.fillRect(x, GY - 70 - h, w, h + 70);
+          if (windows) {
+            ctx.fillStyle = "#ffec27";
+            for (let wy = GY - 70 - h + 18; wy < GY - 90; wy += 38) for (let wx = x + 12; wx < x + w - 16; wx += 30) {
+              if (hash(i * 13 + Math.floor((wx - x) / 30) * 7 + Math.floor(wy / 38) + seed) > 0.6) ctx.fillRect(wx, wy, 12, 14);
+            }
+          }
+        }
+        x += w + 6 + hash(seed + (i % 24) + 300) * 14; i++;
+        if (i > 400) break;
+      }
+    };
+    layer(far, 11, 90, 170, 120, 260, "#0f1b33", false);
+    layer(mid, 41, 70, 140, 80, 190, "#20395f", true);
+  }
+  function drawStreet() {
+    ctx.fillStyle = "#5f574f"; ctx.fillRect(0, GY - 30, W, 30);                      // sidewalk strip behind the road
+    ctx.fillStyle = "#222222"; ctx.fillRect(0, GY, W, H - GY);                       // road
+    ctx.fillStyle = "#c2c3c7"; ctx.fillRect(0, GY - 8, W, 8);                        // curb
+    ctx.fillStyle = "#ffec27";
+    const off = street % 160;
+    for (let x = -off; x < W; x += 160) ctx.fillRect(x, GY + 70, 80, 10);            // lane marks
+    // lamp posts
+    const lo = street % 520;
+    for (let x = -lo + 200; x < W + 60; x += 520) {
+      ctx.fillStyle = "#5f574f"; ctx.fillRect(x, GY - 190, 8, 160);
+      ctx.fillRect(x - 26, GY - 196, 40, 8);
+      ctx.fillStyle = "#ffec27"; ctx.fillRect(x - 28, GY - 188, 18, 10);
+    }
+  }
+  function drawRock(x, w, h) {
+    ctx.fillStyle = "#222222"; ctx.beginPath(); ctx.moveTo(x - 2, GY); ctx.lineTo(x + w * 0.15, GY - h); ctx.lineTo(x + w * 0.6, GY - h - 4);
+    ctx.lineTo(x + w + 2, GY - h * 0.4); ctx.lineTo(x + w + 2, GY); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#8a7a6a"; ctx.beginPath(); ctx.moveTo(x + 4, GY); ctx.lineTo(x + w * 0.18, GY - h + 4); ctx.lineTo(x + w * 0.58, GY - h);
+    ctx.lineTo(x + w - 2, GY - h * 0.4); ctx.lineTo(x + w - 2, GY); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#c2c3c7"; ctx.fillRect(x + w * 0.22, GY - h + 8, w * 0.22, 8);
+  }
+  function drawCar(o) {
+    const x = o.x, w = o.w, h = o.h, cw = w * 0.5, cx = x + w * 0.22;
+    ctx.fillStyle = "#222222"; ctx.fillRect(x - 2, GY - h * 0.55 - 2, w + 4, h * 0.55 + 2);            // body
+    ctx.fillStyle = o.color; ctx.fillRect(x, GY - h * 0.55, w, h * 0.55 - 8);
+    ctx.fillStyle = "#222222"; ctx.fillRect(cx - 2, GY - h - 2, cw + 4, h * 0.45 + 2);                   // cabin
+    ctx.fillStyle = o.color; ctx.fillRect(cx, GY - h + 2, cw, h * 0.45 - 4);
+    ctx.fillStyle = "#9fd3ff"; ctx.fillRect(cx + 6, GY - h + 8, cw * 0.42, h * 0.45 - 16); ctx.fillRect(cx + cw * 0.55, GY - h + 8, cw * 0.38, h * 0.45 - 16);   // windows
+    ctx.fillStyle = "#ffec27"; ctx.fillRect(x + w - 10, GY - h * 0.55 + 6, 10, 10);                      // headlight
+    for (const wx of [x + w * 0.22, x + w * 0.78]) { ctx.fillStyle = "#222222"; ctx.beginPath(); ctx.arc(wx, GY - 8, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#c2c3c7"; ctx.beginPath(); ctx.arc(wx, GY - 8, 6, 0, Math.PI * 2); ctx.fill(); }
+  }
+  function drawRunner(now) {
+    const air = y < GY - 2, ph = (dist * 60) / 22;          // running animation follows distance covered
+    const x = RX, foot = y, hip = foot - 38, neck = hip - 38;
+    ctx.save(); ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 8; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+    if (air) {                                              // tucked legs, arms up
+      line(x, hip, x + 20, hip + 14); line(x + 20, hip + 14, x + 8, foot - 2);
+      line(x, hip, x - 18, hip + 18); line(x - 18, hip + 18, x - 24, foot - 6);
+      line(x, neck + 6, x + 22, neck - 14); line(x, neck + 6, x - 16, neck - 8);
+    } else {
+      const a = Math.sin(ph) * 22, b = -a;
+      line(x, hip, x + a, foot); line(x, hip, x + b, foot);
+      line(x, neck + 6, x - a * 0.9, neck + 28); line(x, neck + 6, x - b * 0.9, neck + 28);
+    }
+    line(x, hip, x, neck + 4);
+    ctx.beginPath(); ctx.arc(x, neck - 12, 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "#ff004d"; ctx.lineWidth = 6; line(x - 12, neck - 16, x + 12, neck - 16); line(x - 12, neck - 16, x - 30 - Math.sin(now / 90) * 4, neck - 8);   // headband tail
+    ctx.restore();
+  }
+  function drawCrashed() {
+    ctx.save(); ctx.translate(crash.x, crash.y - 38); ctx.rotate(crash.rot);
+    ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 8; ctx.lineCap = "butt";
+    line(0, 0, -16, 38); line(0, 0, 16, 34); line(0, 0, 0, -38); line(0, -30, -24, -14); line(0, -30, 24, -44);
+    ctx.beginPath(); ctx.arc(0, -52, 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+  function draw(now) {
+    ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0); ctx.imageSmoothingEnabled = false;
+    drawCity(); drawStreet();
+    obs.forEach(o => { if (o.type === "car") drawCar(o); else { drawRock(o.x, 56, 46); if (o.n === 2) drawRock(o.x + 54, 56, 46); } });
+    if (state === "crashed") drawCrashed(); else drawRunner(now);
+    parts.forEach(q => { ctx.fillStyle = "#c2c3c7"; ctx.fillRect(q.x, q.y, q.r, q.r); });
+    if (state === "ready") { label("TAP OR PRESS SPACE", W / 2, 150, "#ffec27"); label("TO START RUNNING", W / 2, 195, "#ffec27"); }
+    if (state === "run" && t < 4 && cleared === 0) label("JUMP!", W / 2, 130, "#ffec27");
+    if (state === "crashed") label("CRASH!", W / 2, 200, "#ff004d", 64);
+    posterizeCanvas(cv, ctx);
+  }
+
+  return { start, stop };
+})();
+
+/* =====================================================
    TARGET TAP
    ===================================================== */
 const Tap = (() => {
@@ -2100,6 +2351,9 @@ const Tap = (() => {
     "kr.........."];
   function grid(name) {
     if (name === "katana") return KATANA;
+    if (name === "runner") return [
+      ".....WW.....", "....WWWW....", ".....WW.....", "...WWWWWW...", "..W..WW..W..", ".....WW.....",
+      ".....WW.....", "....W..W....", "...W....W...", "..W......W..", "............", "iiiiiiiiiiii"];
     if (name === "crosshair") {
       const out = [];
       for (let y = 0; y < 12; y++) { let r = ""; for (let x = 0; x < 12; x++) {
