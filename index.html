@@ -157,7 +157,7 @@
       <p>Shoot medium targets for 1 point. Small golden targets pop up at random and are worth 5.</p>
       <div class="best" id="bestHit"></div>
     </button>
-    <button class="card" data-go="pkGame">
+    <button class="card" data-go="pkDiff">
       <canvas class="ico" data-ico="runner" width="12" height="12"></canvas><h3>Parkour Sprint</h3>
       <p>Run through the city and jump over rocks and cars. Hold the jump for a higher leap.</p>
       <div class="best" id="bestParkour"></div>
@@ -353,9 +353,22 @@
   </div>
 </section>
 
+<!-- PARKOUR SPRINT: difficulty -->
+<section id="pkDiff" class="screen">
+  <h2><canvas class="ico sm" data-ico="runner" width="12" height="12"></canvas> Parkour Sprint</h2>
+  <p class="sub">Harder levels start faster, speed up more and throw bigger obstacles at you.</p>
+  <div class="diffs">
+    <button class="diff" data-d="easy"><b>Easy</b><small>Normal pace · small rocks and cars</small></button>
+    <button class="diff" data-d="medium"><b>Medium</b><small>Faster · bigger obstacles · tighter gaps</small></button>
+    <button class="diff" data-d="hard"><b>Hard</b><small>Very fast · big obstacles · long combos</small></button>
+  </div>
+  <p class="help">Hold the jump for a higher leap. Cars and combos need a full-height jump.</p>
+  <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
+</section>
+
 <!-- PARKOUR SPRINT -->
 <section id="pkGame" class="screen">
-  <div class="hud"><span id="pkDist">Distance 0 m</span><span id="pkSpeed">Speed x1.0</span><span id="pkBest">Best 0 m</span></div>
+  <div class="hud"><span id="pkDist">Distance 0 m</span><span id="pkSpeed">Speed x1.0</span><span id="pkDiffLbl">Easy</span><span id="pkBest">Best 0 m</span></div>
   <canvas id="pv" width="200" height="140"></canvas>
   <p class="help">You run on your own. Press Space, the up arrow, or tap the screen to jump. Hold for a higher jump.</p>
   <button class="btn alt" data-go="menu">Exit</button>
@@ -368,6 +381,7 @@
     <div id="pkEndNew" style="color:var(--green);min-height:1.4em"></div>
     <table id="pkEndTable"></table>
     <button class="btn" id="pkAgain">Run again</button>
+    <button class="btn alt" data-go="pkDiff">Change difficulty</button>
     <button class="btn alt" data-go="menu">Menu</button>
   </div>
 </section>
@@ -427,7 +441,9 @@ function refreshBest() {
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
   const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
-  const pb = store.get("mm_parkour", 0); $("#bestParkour").textContent = pb ? "Best: " + pb + " m" : "";
+  let pk = store.get("mm_parkour", {}); if (typeof pk === "number") pk = { easy: pk };      // older saves stored one number
+  const pkp = ["easy", "medium", "hard"].filter(d => pk[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + pk[d] + "m");
+  $("#bestParkour").textContent = pkp.length ? "Best: " + pkp.join(" · ") : "";
   const hb = store.get("mm_hit", 0); $("#bestHit").textContent = hb ? "Best: " + hb + " points" : "";
   const cl = store.get("mm_climb", {});
   const cp = ["easy", "medium", "hard"].filter(d => cl[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + cl[d] + "m");
@@ -2053,13 +2069,23 @@ const Parkour = (() => {
   let running = false, raf = 0, prev = 0, endTimer = 0;
   let state, t, dist, speed, y, vy, held, buf, obs, nextGap, cleared, cars, rocks, far, mid, street, parts, crash, tick, last100;
 
-  const speedAt = time => 380 + Math.min(520, time * 5);
+  // easy is the original pace. Harder levels start faster, speed up more, keep smaller gaps and use bigger obstacles.
+  const DIFF = {
+    easy:   { base: 380, ramp: 5, cap: 520, gap: [0.9, 0.9],  carP: 0.42, car: [120, 60], rock: [56, 46], twoP: 0.3,  triP: 0,   comboP: 0 },
+    medium: { base: 470, ramp: 6, cap: 600, gap: [0.8, 0.7],  carP: 0.5,  car: [130, 68], rock: [60, 52], twoP: 0.4,  triP: 0,   comboP: 0.12 },
+    hard:   { base: 560, ramp: 7, cap: 650, gap: [0.7, 0.55], carP: 0.56, car: [140, 76], rock: [64, 58], twoP: 0.35, triP: 0.2, comboP: 0.3 }
+  };
+  let diff = "easy";
+  const bestFor = d => { let v = store.get("mm_parkour", {}); if (typeof v === "number") v = { easy: v }; return v[d] || 0; };
+  const speedAt = time => DIFF[diff].base + Math.min(DIFF[diff].cap, time * DIFF[diff].ramp);
 
-  function start() {
+  function start(d) {
     stop();
+    if (typeof d === "string") diff = d;
     state = "ready"; t = 0; dist = 0; speed = speedAt(0); y = GY; vy = 0; held = false; buf = 0;
     obs = []; nextGap = 900; cleared = 0; cars = 0; rocks = 0; far = 0; mid = 0; street = 0; parts = []; crash = null; tick = 0; last100 = 0;
-    $("#pkBest").textContent = "Best " + store.get("mm_parkour", 0) + " m";
+    $("#pkBest").textContent = "Best " + bestFor(diff) + " m";
+    $("#pkDiffLbl").textContent = diff[0].toUpperCase() + diff.slice(1);
     show("pkGame");
     running = true; prev = performance.now();
     loop();
@@ -2087,17 +2113,31 @@ const Parkour = (() => {
   document.addEventListener("keyup", e => {
     if (running && (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW")) { e.preventDefault(); release(); }
   });
-  $("#pkAgain").addEventListener("click", start);
-  $('[data-go="pkGame"]').addEventListener("click", start);
+  $("#pkAgain").addEventListener("click", () => start(diff));
+  $$("#pkDiff .diff").forEach(b => b.addEventListener("click", () => start(b.dataset.d)));
 
   /* ----- obstacles ----- */
+  function makeCar(x) {
+    const D = DIFF[diff];
+    return { type: "car", x, w: D.car[0], h: D.car[1], color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)], passed: false };
+  }
+  function makeRocks(x, n) {
+    const D = DIFF[diff], rw = D.rock[0];
+    return { type: "rock", x, rw, w: rw * n - (n - 1) * 2, h: D.rock[1], n, passed: false };
+  }
   function spawn() {
-    const car = Math.random() < 0.42 + Math.min(0.2, t / 300);
-    let o;
-    if (car) o = { type: "car", x: W + 60, w: 120, h: 60, color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)] };
-    else { const two = Math.random() < 0.3; o = { type: "rock", x: W + 60, w: two ? 110 : 56, h: 46, n: two ? 2 : 1 }; }
-    o.passed = false; obs.push(o);
-    nextGap = o.w + speed * (0.9 + Math.random() * 0.9);          // always room to land and jump again
+    const D = DIFF[diff], x0 = W + 60;
+    const car = Math.random() < D.carP + Math.min(0.15, t / 300);
+    const list = [];
+    if (Math.random() < D.comboP) {
+      // a combo: two obstacles close together, cleared with one long full-height jump
+      const first = car ? makeCar(x0) : makeRocks(x0, 1), second = car ? makeRocks(x0 + first.w + 44, 1) : makeCar(x0 + first.w + 44);
+      list.push(first, second);
+    } else if (car) list.push(makeCar(x0));
+    else { const r = Math.random(); list.push(makeRocks(x0, r < D.triP ? 3 : r < D.triP + D.twoP ? 2 : 1)); }
+    obs.push(...list);
+    const last = list[list.length - 1], total = last.x + last.w - x0;
+    nextGap = total + speed * (D.gap[0] + Math.random() * D.gap[1]);       // always room to land and jump again
   }
 
   /* ----- loop ----- */
@@ -2150,12 +2190,12 @@ const Parkour = (() => {
   }
   function showEnd() {
     stop();
-    const m = Math.floor(dist), best = store.get("mm_parkour", 0), isNew = m > best;
-    if (isNew) store.set("mm_parkour", m);
+    const m = Math.floor(dist), best = bestFor(diff), isNew = m > best;
+    if (isNew) { let all = store.get("mm_parkour", {}); if (typeof all === "number") all = { easy: all }; all[diff] = m; store.set("mm_parkour", all); }
     $("#pkEndDist").textContent = m + " m";
-    $("#pkEndNew").textContent = isNew ? "New best!" : "Best: " + best + " m";
+    $("#pkEndNew").textContent = isNew ? "New best on " + diff + "!" : "Best on " + diff + ": " + best + " m";
     $("#pkEndTable").innerHTML = "<tr><td>Obstacles cleared</td><td>" + cleared + "</td></tr><tr><td>Cars jumped</td><td>" + cars + "</td></tr>" +
-      "<tr><td>Rocks jumped</td><td>" + rocks + "</td></tr><tr><td>Top speed</td><td>x" + (speed / 380).toFixed(1) + "</td></tr>";
+      "<tr><td>Rocks jumped</td><td>" + rocks + "</td></tr><tr><td>Difficulty</td><td>" + diff + "</td></tr><tr><td>Top speed</td><td>x" + (speed / 380).toFixed(1) + "</td></tr>";
     show("pkEnd");
   }
   function hud() {
@@ -2255,7 +2295,7 @@ const Parkour = (() => {
   function draw(now) {
     ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0); ctx.imageSmoothingEnabled = false;
     drawCity(); drawStreet();
-    obs.forEach(o => { if (o.type === "car") drawCar(o); else { drawRock(o.x, 56, 46); if (o.n === 2) drawRock(o.x + 54, 56, 46); } });
+    obs.forEach(o => { if (o.type === "car") drawCar(o); else for (let i = 0; i < o.n; i++) drawRock(o.x + i * (o.rw - 2), o.rw, o.h); });
     if (state === "crashed") drawCrashed(); else drawRunner(now);
     parts.forEach(q => { ctx.fillStyle = "#c2c3c7"; ctx.fillRect(q.x, q.y, q.r, q.r); });
     if (state === "ready") { label("TAP OR PRESS SPACE", W / 2, 150, "#ffec27"); label("TO START RUNNING", W / 2, 195, "#ffec27"); }
