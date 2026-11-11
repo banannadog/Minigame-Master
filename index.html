@@ -1321,11 +1321,14 @@ const TD = (() => {
     if (va === vb) return front;
     return m === "lowest" || m === "lowhp" ? va < vb : va > vb;
   }
+  // sniper and cannon break armor; the wizard can still slow an armored enemy; everyone else has to wait until it is gone
+  const canHurt = (t, e) => t.type === "sniper" || t.type === "cannon" || (t.type === "wizard" && (t.spell === "slow" || (t.spell === "both" && t.ice)));
   function target(t) {
     const T = TYPES[t.type];
     let best = null;
     for (const e of enemies) {
       if (e.dead || Math.hypot(e.x - t.x, e.y - t.y) > rangeOf(t)) continue;
+      if (e.armor > 0 && !canHurt(t, e)) continue;                 // don't waste shots on armor this helper can't scratch
       if (!best || better(e, best, t.mode)) best = e;
     }
     return best;
