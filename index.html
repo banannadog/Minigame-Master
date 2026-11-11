@@ -142,7 +142,7 @@
     </button>
     <button class="card" data-go="tdGame">
       <canvas class="ico" data-ico="tower" width="12" height="12"></canvas><h3>Stick Defense</h3>
-      <p>Place stickman, sniper, fast, wizard and cannonball helpers to survive 100 waves of tiny sword stickmen. A boss arrives every 10 waves, and enemies get 25% tougher every 10 waves.</p>
+      <p>Place stickman, sniper, fast, wizard and cannonball helpers to survive 100 waves of tiny sword stickmen. A boss arrives every 10 waves.</p>
       <div class="best" id="bestTD"></div>
     </button>
     <button class="card" data-go="mcDiff">
@@ -1208,7 +1208,7 @@ const TD = (() => {
   const RANKS = [[0, "Rookie"], [500, "Soldier"], [2000, "Veteran"], [6000, "Hero"], [15000, "Legend"]];
   const rankOf = n => RANKS.filter(r => n >= r[0]).pop()[1];
   // armor is a second health bar that sits on top of an enemy's health; only the sniper and cannonball can chip it
-  const ARMOR_WAVE = 8;
+  const ARMOR_WAVE = 16;
   const ARMOR = { blob: 16, runner: 12, tank: 50, boss: 300 };
   const TUFTS = Array.from({ length: 60 }, () => ({ x: Math.random() * W, y: Math.random() * H }));
 
@@ -1236,28 +1236,29 @@ const TD = (() => {
   function stop() { running = false; cancelAnimationFrame(raf); clearTimeout(endTimer); }
 
   function buildWave(w) {
-    const q = [];
-    for (let i = 0; i < 5 + 2 * w; i++) q.push("blob");
-    for (let i = 0; i < Math.max(0, (w - 2) * 2); i++) q.push("runner");
-    for (let i = 0; i < Math.floor(w / 2); i++) q.push("tank");
+    const q = [], d = w / 2;
+    for (let i = 0; i < Math.round(5 + 2 * d); i++) q.push("blob");
+    for (let i = 0; i < Math.round(Math.max(0, (d - 2) * 2)); i++) q.push("runner");
+    for (let i = 0; i < Math.floor(d / 2); i++) q.push("tank");
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
-    if (w % 10 === 0) for (let i = 0; i < 1 + Math.floor(w / 40); i++) q.push("boss");   // a slow, tanky boss every 10 waves (1 until wave 30, 2 from 40, 3 from 80)
+    if (w % 10 === 0) for (let i = 0; i < 1 + Math.floor(w / 50); i++) q.push("boss");   // a slow, tanky boss every 10 waves (2 from wave 50, 3 at wave 100)
     return q;
   }
   function startWave() {
     if (!running || waveActive || over) return;
-    wave++; waveActive = true; queue = buildWave(wave); spawnT = 0.3; spawnGap = Math.max(0.4, 1 - 0.06 * wave);
+    wave++; waveActive = true; queue = buildWave(wave); spawnT = 0.3; spawnGap = Math.max(0.4, 1 - 0.06 * wave / 2);
     banner = "";
     beep(300, 0.2, "square", 0.1, 600);
   }
   function spawn(type) {
-    const E = ENEMY[type], grow = 1 + 0.25 * Math.floor((wave - 1) / 10);   // enemies get 25% tougher every 10 waves
-    const k = type === "boss" ? grow * (1 + 0.03 * (wave - 10)) : grow * (type === "tank" ? 1 + 0.3 * (wave - 1) : 1 + 0.25 * (wave - 1));
+    const E = ENEMY[type], d = wave / 2;      // difficulty grows at half pace, with no multiplier on top
+    const k = type === "boss" ? Math.max(1, 1 + 0.02 * (d - 10)) : (type === "tank" ? 1 + 0.3 * (d - 1) : 1 + 0.25 * (d - 1));
     const hp = Math.round(E.hp * k);
     let armor = 0;
     if (wave >= ARMOR_WAVE) {
-      const chance = type === "boss" ? 1 : Math.min(0.6, 0.1 * (wave - ARMOR_WAVE + 1));
-      if (Math.random() < chance) armor = Math.round(ARMOR[type] * (1 + 0.08 * (wave - ARMOR_WAVE)) * grow);
+      const da = (wave - ARMOR_WAVE) / 2;                                     // armor also grows at half pace
+      const chance = type === "boss" ? 1 : Math.min(0.6, 0.1 * (da + 1));
+      if (Math.random() < chance) armor = Math.round(ARMOR[type] * (1 + (type === "boss" ? 0.05 : 0.08) * da));
     }
     enemies.push({ type, hp, max: hp, armor, armorMax: armor, spark: 0, s: 0, slow: 0, burn: 0, burnT: 0, x: PATH[0][0], y: PATH[0][1], dead: false });
   }
@@ -1668,8 +1669,7 @@ const TD = (() => {
     floats.forEach(f => label(f.txt, f.x, f.y, f.c));
     if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, H / 2, won ? "#ffc94a" : "#ff004d", 64);
     else if (waveActive && wave % 10 === 0 && enemies.some(e => e.type === "boss")) label("BOSS INCOMING!", W / 2, 50, "#ff004d");
-    else if (!waveActive && wave + 1 >= ARMOR_WAVE && !(wave + 1 > 10 && (wave + 1) % 10 === 1)) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ARMOR! SNIPER/CANNON ONLY", W / 2, 100, "#9fd3ff"); }
-    else if (!waveActive && wave + 1 > 10 && (wave + 1) % 10 === 1) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ENEMY HEALTH +" + 25 * Math.floor(wave / 10) + "% NOW!", W / 2, 100, "#ff004d"); label("ARMOR! SNIPER/CANNON ONLY", W / 2, 150, "#9fd3ff"); }
+    else if (!waveActive && wave + 1 >= ARMOR_WAVE) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ARMOR! SNIPER/CANNON ONLY", W / 2, 100, "#9fd3ff"); }
     else if (!waveActive) label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a");
     posterizeCanvas(cv, ctx);
   }
