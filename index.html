@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Minigame Master</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #14110f;
@@ -17,52 +19,52 @@
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
-    font-family: "Trebuchet MS", system-ui, sans-serif; }
+    font-family: "Press Start 2P", "Courier New", monospace; font-size: 12px; line-height: 1.6; image-rendering: pixelated; }
   body { display: flex; flex-direction: column; align-items: center; padding: 16px; overflow-x: hidden; }
-  h1 { margin: 8px 0 4px; font-size: clamp(1.8rem, 5vw, 3rem); letter-spacing: 2px; text-transform: uppercase; }
+  h1 { margin: 8px 0 12px; font-size: clamp(1.2rem, 4.5vw, 2.2rem); letter-spacing: 2px; text-shadow: 4px 4px 0 #000; text-transform: uppercase; }
   h1 span { color: var(--red); }
   h2 { margin: 0 0 8px; }
-  p.sub { color: var(--muted); margin: 0 0 20px; text-align: center; }
+  p.sub { font-size: .65rem; color: var(--muted); margin: 0 0 20px; text-align: center; }
   .screen { display: none; width: 100%; max-width: 860px; flex-direction: column; align-items: center; }
   .screen.active { display: flex; }
   .cards { display: grid; gap: 14px; width: 100%; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .card { background: var(--panel); border: 2px solid #3a322c; border-radius: 14px; padding: 18px;
-    cursor: pointer; transition: transform .12s, border-color .12s; text-align: left; color: inherit; font: inherit; }
-  .card:hover { transform: translateY(-3px); border-color: var(--red); }
-  .card .emoji { font-size: 2.2rem; }
+  .card { box-shadow: 4px 4px 0 #000; background: var(--panel); border: 2px solid #3a322c; border-radius: 0; padding: 18px;
+    cursor: pointer; transition: border-color .12s; text-align: left; color: inherit; font: inherit; }
+  .card:hover { border-color: var(--red); }
+  .card .emoji { font-size: 2.2rem; image-rendering: pixelated; }
   .card h3 { margin: 6px 0 4px; }
-  .card p { margin: 0; color: var(--muted); font-size: .92rem; }
-  .card .best { margin-top: 8px; font-size: .85rem; color: var(--gold); }
-  button.btn { background: var(--red); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px;
+  .card p { margin: 0; color: var(--muted); font-size: .6rem; line-height: 1.8; }
+  .card .best { margin-top: 8px; font-size: .55rem; color: var(--gold); }
+  button.btn { background: var(--red); color: #fff; border: 0; border-radius: 0; padding: 12px 22px;
     font: inherit; font-weight: 700; cursor: pointer; margin: 4px; }
   button.btn.alt { background: #3a322c; }
   button.btn:hover { filter: brightness(1.15); }
   .diffs { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 12px 0; }
-  .diff { background: var(--panel); border: 2px solid #3a322c; border-radius: 12px; padding: 14px 18px;
+  .diff { background: var(--panel); border: 2px solid #3a322c; border-radius: 0; padding: 14px 18px;
     cursor: pointer; text-align: center; min-width: 150px; color: inherit; font: inherit; }
   .diff:hover { border-color: var(--gold); }
-  .diff b { display: block; font-size: 1.15rem; }
+  .diff b { display: block; font-size: .85rem; margin-bottom: 4px; }
   .diff small { color: var(--muted); }
-  .diff .sq { display: inline-block; background: var(--gold); margin: 8px 0 2px; border-radius: 3px; }
+  .diff .sq { display: inline-block; background: var(--gold); margin: 8px 0 2px; border-radius: 0; }
   .hud { display: flex; justify-content: space-between; width: 100%; max-width: 800px; margin-bottom: 8px;
     font-weight: 700; gap: 8px; flex-wrap: wrap; }
-  .hud span { background: var(--panel); padding: 6px 12px; border-radius: 8px; }
-  canvas { width: 100%; max-width: 800px; height: auto; border-radius: 14px; border: 2px solid #3a322c;
+  .hud span { background: var(--panel); padding: 6px 12px; border-radius: 0; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; image-rendering: pixelated; box-shadow: 6px 6px 0 #000; width: 100%; max-width: 800px; height: auto; border-radius: 0; border: 2px solid #3a322c;
     touch-action: none; cursor: none; background: #000; }
-  .summary { background: var(--panel); border-radius: 14px; padding: 20px; width: 100%; max-width: 520px; text-align: center; }
+  .summary { background: var(--panel); border-radius: 0; padding: 20px; width: 100%; max-width: 520px; text-align: center; }
   .summary table { width: 100%; border-collapse: collapse; margin: 12px 0; }
   .summary td, .summary th { padding: 6px; border-bottom: 1px solid #3a322c; }
-  .big { font-size: 2.6rem; color: var(--gold); font-weight: 800; }
-  .help { color: var(--muted); font-size: .9rem; text-align: center; max-width: 560px; margin: 10px 0; }
-  .tiers { color: var(--muted); font-size: .85rem; margin-top: 10px; }
+  .big { font-size: 2rem; color: var(--gold); font-weight: 800; }
+  .help { color: var(--muted); font-size: .6rem; line-height: 1.9; text-align: center; max-width: 560px; margin: 10px 0; }
+  .tiers { color: var(--muted); font-size: .55rem; line-height: 1.9; max-width: 640px; text-align: center; margin-top: 10px; }
   .tiers b.p { color: var(--gold); }
   /* side games */
   #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
-    border: 2px solid #3a322c; border-radius: 14px; overflow: hidden; touch-action: manipulation; }
-  .tgt { position: absolute; border-radius: 50%; background: radial-gradient(circle, #fff 0 12%, var(--red) 13% 40%, #fff 41% 55%, var(--red) 56%);
+    border: 2px solid #3a322c; border-radius: 0; overflow: hidden; touch-action: manipulation; }
+  .tgt { position: absolute; border-radius: 0; image-rendering: pixelated; clip-path: polygon(30% 0,70% 0,70% 15%,85% 15%,85% 30%,100% 30%,100% 70%,85% 70%,85% 85%,70% 85%,70% 100%,30% 100%,30% 85%,15% 85%,15% 70%,0 70%,0 30%,15% 30%,15% 15%,30% 15%); background: radial-gradient(circle, #fff 0 12%, var(--red) 13% 40%, #fff 41% 55%, var(--red) 56%);
     cursor: crosshair; border: 0; padding: 0; }
   .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: min(360px, 90vw); margin: 14px 0; }
-  .pad { height: 130px; border-radius: 16px; border: 0; opacity: .55; cursor: pointer; transition: opacity .1s, transform .1s; }
+  .pad { height: 130px; border-radius: 0; border: 0; opacity: .55; cursor: pointer; transition: opacity .1s, transform .1s; }
   .pad.lit { opacity: 1; transform: scale(1.04); filter: brightness(1.4); }
   .pad[data-i="0"] { background: #e5484d; } .pad[data-i="1"] { background: #3e9bff; }
   .pad[data-i="2"] { background: #3ecf8e; } .pad[data-i="3"] { background: #ffc94a; }
@@ -113,7 +115,7 @@
 <!-- KATANA: game -->
 <section id="kGame" class="screen">
   <div class="hud"><span id="kRound">Round 1/5</span><span id="kDiffLbl">Easy</span><span id="kScore">Score 0</span></div>
-  <canvas id="cv" width="800" height="560"></canvas>
+  <canvas id="cv" width="200" height="140"></canvas>
   <p class="help">Swipe or click through the box after the rope snaps.</p>
 </section>
 
@@ -203,7 +205,8 @@ const sfx = {
    ===================================================== */
 const Katana = (() => {
   const cv = $("#cv"), ctx = cv.getContext("2d");
-  const W = 800, H = 560;
+  const W = 800, H = 560, PX = 4;   // logic runs at 800x560, drawn at 200x140 then scaled up for chunky pixels
+  if (document.fonts) document.fonts.load("32px \"Press Start 2P\"");
   const ANCHOR = { x: W / 2, y: 40 };
   const BOX_BOTTOM = 270, FLOOR = 510, GRAV = 600;
   const ROUNDS = 5;
@@ -428,6 +431,8 @@ const Katana = (() => {
   }
 
   function draw(now) {
+    ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
+    ctx.imageSmoothingEnabled = false;
     // background
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#2a1f2f"); g.addColorStop(1, "#4a2c2a");
@@ -497,18 +502,18 @@ const Katana = (() => {
     // prompt
     ctx.textAlign = "center";
     if (state === "waiting") {
-      ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = "bold 26px Trebuchet MS, sans-serif";
-      ctx.fillText("Wait for the rope to snap...", W / 2, H - 20);
+      ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = "32px \"Press Start 2P\", \"Courier New\", monospace";
+      ctx.fillText("WAIT...", W / 2, H - 22);
     }
     if (state === "falling" && !box.sliced) {
-      ctx.fillStyle = "#ffc94a"; ctx.font = "bold 44px Trebuchet MS, sans-serif";
-      ctx.fillText("SLICE!", W / 2, 110);
+      ctx.fillStyle = "#ffc94a"; ctx.font = "64px \"Press Start 2P\", \"Courier New\", monospace";
+      ctx.fillText("SLICE!", W / 2, 120);
     }
     if (state === "result" && bannerText) {
-      const k = Math.min(1, (now - bannerAt) / 150);
-      ctx.save(); ctx.translate(W / 2, 140); ctx.scale(.8 + .2 * k, .8 + .2 * k);
-      ctx.font = "800 " + (bannerText.startsWith("PERFECT") ? 54 : 40) + "px Trebuchet MS, sans-serif";
-      ctx.lineWidth = 6; ctx.strokeStyle = "#000"; ctx.strokeText(bannerText, 0, 0);
+      const hop = Math.max(0, 16 - Math.floor((now - bannerAt) / 40) * 4);   // pixel-stepped pop-in
+      ctx.save(); ctx.translate(W / 2, 150 - hop);
+      ctx.font = "32px \"Press Start 2P\", \"Courier New\", monospace";
+      ctx.lineWidth = 8; ctx.lineJoin = "round"; ctx.strokeStyle = "#000"; ctx.strokeText(bannerText, 0, 0);
       ctx.fillStyle = bannerColor; ctx.fillText(bannerText, 0, 0);
       ctx.restore();
     }
