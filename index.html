@@ -93,6 +93,9 @@
   .tdu.sel { border-color: var(--gold); background: #2e2620; }
   .tdu:disabled { opacity: .45; cursor: not-allowed; }
   [hidden] { display: none !important; }
+  #tdGame.screen { max-width: 1100px; }
+  #tv { max-width: 1100px; }
+  #tdGame .hud, #tdGame .shop, #tdGame .stats, #tdGame .tdpanel { max-width: 1100px; }
   .hud span.score { color: var(--gold); }
   .stats { display: grid; gap: 8px; width: 100%; max-width: 800px; margin-top: 10px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .stats div { background: var(--panel); padding: 8px 10px; box-shadow: 3px 3px 0 #000; }
@@ -233,7 +236,7 @@
 <!-- STICK DEFENSE -->
 <section id="tdGame" class="screen">
   <div class="hud"><span id="tdScore" class="score">Score 0</span><span id="tdWave">Wave 0</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 30</span><span id="tdPts">Points 0</span></div>
-  <canvas id="tv" width="200" height="140"></canvas>
+  <canvas id="tv" width="300" height="210"></canvas>
   <div class="actions">
     <button class="btn big" id="tdStart">START WAVE 1</button>
     <button class="btn alt big" id="tdSpeed">SPEED x1</button>
@@ -1069,14 +1072,17 @@ const Snow = (() => {
    ===================================================== */
 const TD = (() => {
   const cv = $("#tv"), ctx = cv.getContext("2d");
-  const W = 800, H = 560, PX = 4, WAVES = 10;
+  const W = 1200, H = 840, PX = 4, WAVES = 10;
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
-  const PATH = [[-20, 110], [180, 110], [180, 290], [420, 290], [420, 120], [640, 120], [640, 400], [300, 400], [300, 478]];
+  const PATH = [[-20, 120], [260, 120], [260, 380], [560, 380], [560, 140], [920, 140], [920, 420], [1120, 420],
+                [1120, 740], [700, 740], [700, 560], [380, 560], [380, 770]];
+  const END = PATH[PATH.length - 1];
   const CUM = [0];
   for (let i = 1; i < PATH.length; i++) CUM.push(CUM[i - 1] + Math.hypot(PATH[i][0] - PATH[i - 1][0], PATH[i][1] - PATH[i - 1][1]));
   const TOTAL = CUM[CUM.length - 1];
-  const PADS = [[100, 200], [260, 200], [300, 345], [500, 200], [560, 350], [700, 260],
-                [700, 60], [320, 60], [100, 360], [450, 470], [190, 440], [420, 350]];
+  const PADS = [[150, 200], [150, 40], [190, 330], [340, 250], [410, 300], [480, 250], [640, 260], [740, 60],
+                [740, 230], [880, 60], [840, 240], [1020, 330], [1020, 520], [1030, 640], [900, 650], [790, 640],
+                [610, 650], [540, 480], [410, 470], [300, 470], [290, 650], [470, 650], [620, 470]];
   const TYPES = {
     stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "3 damage, near enemies" },
     sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
@@ -1280,10 +1286,10 @@ const TD = (() => {
       if (e.dead) continue;
       if (e.burn > 0) { e.burn -= dt; e.burnT += dt; while (e.burnT >= 0.5) { e.burnT -= 0.5; damage(e, 1); } }
       if (e.slow > 0) e.slow -= dt;
-      e.s += ENEMY[e.type].spd * (e.slow > 0 ? 0.45 : 1) * dt;
+      e.s += ENEMY[e.type].spd * 1.3 * (e.slow > 0 ? 0.45 : 1) * dt;
       if (e.s >= TOTAL) {
         e.dead = true; lives -= ENEMY[e.type].life; lost += ENEMY[e.type].life; score = Math.max(0, score - 25 * ENEMY[e.type].life);
-        floats.push({ x: 300, y: 440, txt: "-" + ENEMY[e.type].life, life: 1, c: "#ff004d" }); beep(100, 0.25, "sawtooth", 0.15, 50);
+        floats.push({ x: END[0], y: END[1] - 40, txt: "-" + ENEMY[e.type].life, life: 1, c: "#ff004d" }); beep(100, 0.25, "sawtooth", 0.15, 50);
         if (lives <= 0 && !over) { lives = 0; finish(false); }
         continue;
       }
@@ -1420,9 +1426,10 @@ const TD = (() => {
     ctx.strokeStyle = "#8a7a6a"; ctx.lineWidth = 48; ctx.beginPath(); PATH.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
     ctx.strokeStyle = "#c9a66b"; ctx.lineWidth = 36; ctx.beginPath(); PATH.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
     // base house
-    ctx.fillStyle = "#e8f4ff"; ctx.fillRect(268, 478, 64, 50); ctx.fillStyle = "#ab5236"; ctx.fillRect(280, 498, 14, 30);
-    ctx.fillStyle = "#d7263d"; ctx.beginPath(); ctx.moveTo(258, 480); ctx.lineTo(342, 480); ctx.lineTo(300, 444); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#29adff"; ctx.fillRect(306, 494, 16, 16);
+    const hx = END[0], hy = END[1];
+    ctx.fillStyle = "#e8f4ff"; ctx.fillRect(hx - 32, hy, 64, 50); ctx.fillStyle = "#ab5236"; ctx.fillRect(hx - 20, hy + 20, 14, 30);
+    ctx.fillStyle = "#d7263d"; ctx.beginPath(); ctx.moveTo(hx - 42, hy + 2); ctx.lineTo(hx + 42, hy + 2); ctx.lineTo(hx, hy - 34); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#29adff"; ctx.fillRect(hx + 6, hy + 16, 16, 16);
     // pads
     PADS.forEach((q, i) => {
       const free = !towers[i], hot = hover === i, chosen = selTower === i;
@@ -1444,7 +1451,7 @@ const TD = (() => {
     enemies.forEach(e => drawEnemy(e, now));
     fx.forEach(f => { ctx.strokeStyle = f.c; ctx.lineWidth = f.w; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke(); });
     floats.forEach(f => label(f.txt, f.x, f.y, f.c));
-    if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, 280, won ? "#ffc94a" : "#ff004d", 64);
+    if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, H / 2, won ? "#ffc94a" : "#ff004d", 64);
     else if (waveActive && wave % 10 === 0 && enemies.some(e => e.type === "boss")) label("BOSS INCOMING!", W / 2, 50, "#ff004d");
     else if (!waveActive && wave + 1 > 10 && (wave + 1) % 10 === 1) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ENEMY HEALTH x" + Math.pow(2, Math.floor(wave / 10)) + " NOW!", W / 2, 100, "#ff004d"); }
     else if (!waveActive) label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a");
