@@ -119,7 +119,7 @@
     </button>
     <button class="card" data-go="tdGame">
       <canvas class="ico" data-ico="tower" width="12" height="12"></canvas><h3>Stick Defense</h3>
-      <p>Place stickman, sniper, fast and wizard helpers to hold off endless waves of tiny sword stickmen. A 1000-health boss arrives every 10 waves.</p>
+      <p>Place stickman, sniper, fast and wizard helpers to hold off endless waves of tiny sword stickmen. A 1000-health boss arrives every 10 waves, and enemy health doubles every 10 waves after the first 10.</p>
       <div class="best" id="bestTD"></div>
     </button>
     <button class="card" data-go="tap">
@@ -1060,7 +1060,7 @@ const TD = (() => {
   const TYPES = {
     stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "3 damage, near enemies" },
     sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
-    fast:   { name: "Fast stickman", cost: 220, range: 110, cd: 0.02, desc: "2 damage every 20ms" },
+    fast:   { name: "Fast stickman", cost: 220, range: 110, cd: 0.08, desc: "2 damage every 80ms" },
     wizard: { name: "Wizard",        cost: 150, range: 230, cd: 1.0,  desc: "2 dmg + slow or burn 2s" }
   };
   const ENEMY = {
@@ -1108,7 +1108,8 @@ const TD = (() => {
     beep(300, 0.2, "square", 0.1, 600);
   }
   function spawn(type) {
-    const E = ENEMY[type], k = type === "boss" ? wave / 10 : type === "tank" ? 1 + 0.3 * (wave - 1) : 1 + 0.25 * (wave - 1);
+    const E = ENEMY[type], twice = Math.pow(2, Math.floor((wave - 1) / 10));   // health doubles every 10 waves after the first 10
+    const k = type === "boss" ? twice : twice * (type === "tank" ? 1 + 0.3 * (wave - 1) : 1 + 0.25 * (wave - 1));
     const hp = Math.round(E.hp * k);
     enemies.push({ type, hp, max: hp, s: 0, slow: 0, burn: 0, burnT: 0, x: PATH[0][0], y: PATH[0][1], dead: false });
   }
@@ -1126,8 +1127,9 @@ const TD = (() => {
   }
 
   /* ----- towers ----- */
-  const UP_COST = 5, UP_MAX = 3;
-  const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : 1);
+  const UP_COST = 5;
+  const upMax = t => (t.type === "fast" ? 5 : 3);
+  const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : t.type === "fast" ? Math.pow(0.75, t.lv.rate) : 1);
   function target(t) {
     const T = TYPES[t.type];
     let best = null;
@@ -1185,9 +1187,10 @@ const TD = (() => {
   });
   function upgrade(kind) {
     const t = towers[selTower];
-    if (!t || t.type !== "sniper" || over || pts < UP_COST || t.lv[kind] >= UP_MAX) return;
+    if (!t || over || pts < UP_COST || t.lv[kind] >= upMax(t)) return;
+    if (!(t.type === "sniper" || (t.type === "fast" && kind === "rate"))) return;
     pts -= UP_COST; t.lv[kind]++; beep(660, 0.12, "triangle", 0.15, 990);
-    floats.push({ x: t.x, y: t.y - 60, txt: kind === "dmg" ? "DAMAGE UP" : "RELOAD UP", life: 1, c: "#5ab0ff" });
+    floats.push({ x: t.x, y: t.y - 60, txt: kind === "dmg" ? "DAMAGE UP" : "SPEED UP", life: 1, c: "#5ab0ff" });
   }
   $("#upDmg").addEventListener("click", () => upgrade("dmg"));
   $("#upRate").addEventListener("click", () => upgrade("rate"));
@@ -1262,16 +1265,17 @@ const TD = (() => {
     const st = selTower >= 0 ? towers[selTower] : null, panel = $("#tdPanel");
     panel.hidden = !st;
     if (st) {
-      const sn = st.type === "sniper";
-      $("#tdPanelName").textContent = TYPES[st.type].name + (sn ? "" : " · no upgrades yet");
-      $("#upDmg").hidden = $("#upRate").hidden = !sn;
-      if (sn) {
-        const h1 = "More damage<small class='d'>Far " + (4 + 2 * st.lv.dmg) + " · Close " + (6 + 2 * st.lv.dmg) + "</small><small>" + (st.lv.dmg >= UP_MAX ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.dmg + "/" + UP_MAX + "</small>";
-        const h2 = "Faster reload<small class='d'>Shoots every " + cdOf(st).toFixed(2) + "s</small><small>" + (st.lv.rate >= UP_MAX ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.rate + "/" + UP_MAX + "</small>";
+      const sn = st.type === "sniper", fa = st.type === "fast", mx = st ? upMax(st) : 3;
+      $("#tdPanelName").textContent = TYPES[st.type].name + (sn || fa ? "" : " · no upgrades yet");
+      $("#upDmg").hidden = !sn; $("#upRate").hidden = !(sn || fa);
+      if (sn || fa) {
+        const h1 = "More damage<small class='d'>Far " + (4 + 2 * st.lv.dmg) + " · Close " + (6 + 2 * st.lv.dmg) + "</small><small>" + (st.lv.dmg >= mx ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.dmg + "/" + mx + "</small>";
+        const ms = Math.round(cdOf(st) * 1000);
+        const h2 = (fa ? "Faster shooting" : "Faster reload") + "<small class='d'>Shoots every " + (fa ? ms + "ms" : cdOf(st).toFixed(2) + "s") + "</small><small>" + (st.lv.rate >= mx ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.rate + "/" + mx + "</small>";
         if (panel.dataset.a !== h1) { $("#upDmg").innerHTML = h1; panel.dataset.a = h1; }
         if (panel.dataset.b !== h2) { $("#upRate").innerHTML = h2; panel.dataset.b = h2; }
-        $("#upDmg").disabled = pts < UP_COST || st.lv.dmg >= UP_MAX;
-        $("#upRate").disabled = pts < UP_COST || st.lv.rate >= UP_MAX;
+        $("#upDmg").disabled = pts < UP_COST || st.lv.dmg >= mx;
+        $("#upRate").disabled = pts < UP_COST || st.lv.rate >= mx;
       }
     }
     const sb = $("#tdStart");
@@ -1377,6 +1381,7 @@ const TD = (() => {
     floats.forEach(f => label(f.txt, f.x, f.y, f.c));
     if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, 280, won ? "#ffc94a" : "#ff004d", 64);
     else if (waveActive && wave % 10 === 0 && enemies.some(e => e.type === "boss")) label("BOSS INCOMING!", W / 2, 50, "#ff004d");
+    else if (!waveActive && wave + 1 > 10 && (wave + 1) % 10 === 1) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ENEMY HEALTH x" + Math.pow(2, Math.floor(wave / 10)) + " NOW!", W / 2, 100, "#ff004d"); }
     else if (!waveActive) label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a");
     posterizeCanvas(cv, ctx);
   }
