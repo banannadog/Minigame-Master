@@ -1591,7 +1591,7 @@ const Climb = (() => {
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
   // rock radius gets smaller on harder levels, and the grip timer runs out faster
   const DIFF = { easy: { r: 40, t0: 2.4, tmin: 1.2 }, medium: { r: 30, t0: 2.3, tmin: 1.05 }, hard: { r: 19, t0: 2.0, tmin: 0.85 } };
-  const WALL = ["#5f574f", "#8a7a6a", "#a99d90", "#c2c3c7", "#e8f4ff"];
+  const WALL = ["#ab5236", "#b9803f", "#c9a66b", "#c2c3c7", "#e8f4ff"];   // earthy wall so the gray rocks stand out
   const hash = n => { n = Math.imul(n ^ 61, 0x9e3779b1); n ^= n >>> 15; n = Math.imul(n, 0x85ebca6b); n ^= n >>> 13; return (n >>> 0) / 4294967296; };
 
   let diff = "easy", running = false, raf = 0, prev = 0, endTimer = 0;
@@ -1743,8 +1743,8 @@ const Climb = (() => {
       }
       if (next) { const g = rr + 12 + Math.sin(now / 160) * 4; ctx.fillStyle = "#ffec27"; ctx.beginPath(); ctx.arc(R.x, y, g, 0, Math.PI * 2); ctx.fill(); }
       ctx.fillStyle = "#222222"; ctx.beginPath(); ctx.arc(R.x, y, rr + 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#ab5236"; ctx.beginPath(); ctx.arc(R.x, y, rr, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#c9a66b"; ctx.beginPath(); ctx.arc(R.x - rr * 0.3, y - rr * 0.3, rr * 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#5f574f"; ctx.beginPath(); ctx.arc(R.x, y, rr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#a99d90"; ctx.beginPath(); ctx.arc(R.x - rr * 0.3, y - rr * 0.3, rr * 0.4, 0, Math.PI * 2); ctx.fill();
     }
     if (state === "falling") drawFalling(now); else drawClimber(climber.x, climber.y - camY, now);
     parts.forEach(q => { ctx.fillStyle = "#c2c3c7"; ctx.fillRect(q.x, q.y - camY, q.r, q.r); });
