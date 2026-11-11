@@ -278,7 +278,7 @@
       <button class="tdm" data-m="lowhp"></button><button class="tdm" data-m="highhp"></button>
     </div>
   </div>
-  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Blue squares are far from the path, so only long-range helpers like the Sniper and Cannonball stickman can reach it from there. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Blue squares are far from the path, so only long-range helpers like the Sniper and Cannonball stickman can reach it from there. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10. From wave 8, some enemies wear armor: only the Sniper and Cannonball stickman can break it.</p>
 </section>
 
 <section id="tdEnd" class="screen">
@@ -1155,12 +1155,15 @@ const TD = (() => {
   const SCORE = { blob: 10, runner: 15, tank: 50, boss: 500 };
   const RANKS = [[0, "Rookie"], [500, "Soldier"], [2000, "Veteran"], [6000, "Hero"], [15000, "Legend"]];
   const rankOf = n => RANKS.filter(r => n >= r[0]).pop()[1];
+  // armor is a second health bar that sits on top of an enemy's health; only the sniper and cannonball can chip it
+  const ARMOR_WAVE = 8;
+  const ARMOR = { blob: 16, runner: 12, tank: 50, boss: 300 };
   const TUFTS = Array.from({ length: 60 }, () => ({ x: Math.random() * W, y: Math.random() * H }));
 
   let running = false, raf = 0, prev = 0, endTimer = 0;
   let coins, lives, wave, waveActive, queue, spawnT, spawnGap, enemies, towers, fx, floats, balls;
   let kills, earned, built, speed, sel, hover, over, won, banner, pts, selTower;
-  let score, lost, bossKills, dealt, bestScore;
+  let score, lost, bossKills, dealt, bestScore, armorBroken;
 
   function pointAt(d) {
     let i = 1;
@@ -1173,7 +1176,7 @@ const TD = (() => {
     coins = 30; lives = 15; wave = 0; waveActive = false; queue = []; spawnT = 0; spawnGap = 1;
     enemies = []; towers = PADS.map(() => null); fx = []; floats = []; balls = [];
     kills = 0; earned = 0; built = 0; pts = 0; selTower = -1; speed = 1;
-    score = 0; lost = 0; bossKills = 0; dealt = 0; bestScore = store.get("mm_td_score", 0); sel = "stick"; hover = -1; over = false; won = false; banner = "";
+    armorBroken = 0; score = 0; lost = 0; bossKills = 0; dealt = 0; bestScore = store.get("mm_td_score", 0); sel = "stick"; hover = -1; over = false; won = false; banner = "";
     show("tdGame");
     stop(); running = true; prev = performance.now();
     loop();
@@ -1199,11 +1202,35 @@ const TD = (() => {
     const E = ENEMY[type], twice = Math.pow(2, Math.floor((wave - 1) / 10));   // health doubles every 10 waves after the first 10
     const k = type === "boss" ? twice : twice * (type === "tank" ? 1 + 0.3 * (wave - 1) : 1 + 0.25 * (wave - 1));
     const hp = Math.round(E.hp * k);
-    enemies.push({ type, hp, max: hp, s: 0, slow: 0, burn: 0, burnT: 0, x: PATH[0][0], y: PATH[0][1], dead: false });
+    let armor = 0;
+    if (wave >= ARMOR_WAVE) {
+      const chance = type === "boss" ? 1 : Math.min(0.6, 0.1 * (wave - ARMOR_WAVE + 1));
+      if (Math.random() < chance) armor = Math.round(ARMOR[type] * (1 + 0.15 * (wave - ARMOR_WAVE)) * twice);
+    }
+    enemies.push({ type, hp, max: hp, armor, armorMax: armor, spark: 0, s: 0, slow: 0, burn: 0, burnT: 0, x: PATH[0][0], y: PATH[0][1], dead: false });
   }
 
-  function damage(e, d) {
+  function damage(e, d, pierce) {
     if (e.dead) return;
+    if (e.armor > 0) {
+      if (!pierce) {                                  // ordinary hits glance off armor
+        if (e.spark <= 0) {
+          e.spark = 0.35;
+          fx.push({ circle: true, x: e.x, y: e.y - 8, r: 14, life: 0.12, max: 0.12, c: "#c2c3c7" });
+          floats.push({ x: e.x, y: e.y - 50, txt: "ARMOR", life: 0.5, c: "#9fd3ff" });
+        }
+        return;
+      }
+      const a = Math.min(d, e.armor);
+      e.armor -= a; dealt += a; d -= a;
+      if (e.armor <= 0) {
+        armorBroken++; score += 20;
+        floats.push({ x: e.x, y: e.y - 56, txt: "ARMOR BROKEN", life: 1, c: "#6aa7d8" });
+        fx.push({ circle: true, x: e.x, y: e.y - 8, r: 36, life: 0.2, max: 0.2, c: "#6aa7d8" });
+        beep(300, 0.15, "square", 0.12, 140);
+      }
+      if (d <= 0) return;
+    }
     dealt += Math.min(d, Math.max(0, e.hp));
     e.hp -= d;
     if (e.hp <= 0) {
@@ -1266,7 +1293,7 @@ const TD = (() => {
     let col = "#fff1e8", w = 6, life = 0.08;
     if (t.type === "stick") { damage(e, 3 + 2 * t.lv.dmg); beep(220, 0.04, "square", 0.05); }
     else if (t.type === "sniper") {
-      damage(e, (dist <= 120 ? 6 : 4) + 2 * t.lv.dmg); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
+      damage(e, (dist <= 120 ? 6 : 4) + 2 * t.lv.dmg, true); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
     } else if (t.type === "fast") {
       damage(e, 2 + t.lv.dmg); col = "#ffa300"; w = 4; life = 0.05;
       if (t.snd <= 0) { beep(700, 0.03, "square", 0.04); t.snd = 0.1; }
@@ -1371,6 +1398,7 @@ const TD = (() => {
     if (waveActive && queue.length) { spawnT -= dt; if (spawnT <= 0) { spawn(queue.shift()); spawnT = spawnGap; } }
     for (const e of enemies) {
       if (e.dead) continue;
+      if (e.spark > 0) e.spark -= dt;
       if (e.burn > 0) { e.burn -= dt; e.burnT += dt; while (e.burnT >= 0.5) { e.burnT -= 0.5; damage(e, e.burnDmg || 1); } }
       if (e.slow > 0) e.slow -= dt;
       e.s += ENEMY[e.type].spd * 1.3 * (e.slow > 0 ? 0.45 : 1) * dt;
@@ -1402,7 +1430,7 @@ const TD = (() => {
       b.t += dt / b.dur;
       if (b.t >= 1) {
         b.done = true;
-        for (const e of enemies) if (!e.dead && Math.hypot(e.x - b.x2, e.y - b.y2) <= b.rad) damage(e, b.dmg);
+        for (const e of enemies) if (!e.dead && Math.hypot(e.x - b.x2, e.y - b.y2) <= b.rad) damage(e, b.dmg, true);
         fx.push({ circle: true, x: b.x2, y: b.y2, r: b.rad, life: 0.3, max: 0.3, c: "#ffa300" });
         beep(70, 0.3, "sawtooth", 0.16, 35);
       }
@@ -1420,7 +1448,7 @@ const TD = (() => {
     $("#tdPts").textContent = "Points " + pts;
     $("#tdScore").textContent = "Score " + score;
     const cleared = Math.max(0, wave - (waveActive ? 1 : 0));
-    const stats = [["Rank", rankOf(score)], ["Kills", kills], ["Waves cleared", cleared], ["Boss kills", bossKills],
+    const stats = [["Rank", rankOf(score)], ["Kills", kills], ["Waves cleared", cleared], ["Boss kills", bossKills], ["Armor broken", armorBroken],
       ["Lives lost", lost], ["Damage dealt", dealt], ["Coins earned", earned], ["Helpers placed", built],
       ["Best score", Math.max(bestScore, score)]];
     const sh = stats.map(r => "<div><small>" + r[0] + "</small><b>" + r[1] + "</b></div>").join("");
@@ -1516,6 +1544,11 @@ const TD = (() => {
     ctx.strokeStyle = e.type === "boss" ? "#ffec27" : "#c2c3c7"; ctx.lineWidth = e.type === "boss" ? 6 : 5;                // sword
     line(hx, hy, hx + d * 7 * k, hy - 20 * k);
     ctx.strokeStyle = "#ab5236"; ctx.lineWidth = 5; line(hx - d * 4 * k, hy - 5 * k, hx + d * 6 * k, hy - 3 * k);          // hilt
+    if (e.armor > 0) {
+      ctx.fillStyle = "#c2c3c7"; ctx.fillRect(x - 8 * k, y - 8 * k, 16 * k, 14 * k);          // chest plate
+      ctx.fillStyle = "#6aa7d8"; ctx.fillRect(x - 8 * k, y - 8 * k, 16 * k, 5);
+      ctx.fillStyle = "#c2c3c7"; ctx.fillRect(x - 8 * k, y - 23 * k, 16 * k, 8 * k);          // helmet
+    }
     let top = y - 22 * k;
     if (e.type === "tank") { ctx.fillStyle = "#c2c3c7"; ctx.fillRect(x - 7 * k, y - 22 * k, 14 * k, 6 * k); }
     if (e.type === "boss") { ctx.fillStyle = "#ffc94a"; ctx.fillRect(x - 8 * k, top - 8, 16 * k, 8); ctx.fillRect(x - 8 * k, top - 16, 6, 8); ctx.fillRect(x - 3, top - 16, 6, 8); ctx.fillRect(x + 8 * k - 6, top - 16, 6, 8); top -= 16; }
@@ -1523,6 +1556,11 @@ const TD = (() => {
     const bw = 30 * k + 6, bx = x - bw / 2, by = top - (e.burn > 0 ? 26 : 14);
     ctx.fillStyle = "#0f1b33"; ctx.fillRect(bx - 2, by - 2, bw + 4, 12);
     ctx.fillStyle = e.hp / e.max > 0.4 ? "#00e436" : "#ff004d"; ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.max), 8);
+    if (e.armor > 0) {
+      const ay = by - 14;
+      ctx.fillStyle = "#0f1b33"; ctx.fillRect(bx - 2, ay - 2, bw + 4, 12);
+      ctx.fillStyle = "#9fd3ff"; ctx.fillRect(bx, ay, bw * e.armor / e.armorMax, 8);
+    }
     ctx.restore();
   }
   function draw(now) {
@@ -1574,7 +1612,8 @@ const TD = (() => {
     floats.forEach(f => label(f.txt, f.x, f.y, f.c));
     if (over) label(won ? "YOU WIN!" : "BASE DESTROYED", W / 2, H / 2, won ? "#ffc94a" : "#ff004d", 64);
     else if (waveActive && wave % 10 === 0 && enemies.some(e => e.type === "boss")) label("BOSS INCOMING!", W / 2, 50, "#ff004d");
-    else if (!waveActive && wave + 1 > 10 && (wave + 1) % 10 === 1) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ENEMY HEALTH x" + Math.pow(2, Math.floor(wave / 10)) + " NOW!", W / 2, 100, "#ff004d"); }
+    else if (!waveActive && wave + 1 >= ARMOR_WAVE && !(wave + 1 > 10 && (wave + 1) % 10 === 1)) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ARMOR! SNIPER/CANNON ONLY", W / 2, 100, "#9fd3ff"); }
+    else if (!waveActive && wave + 1 > 10 && (wave + 1) % 10 === 1) { label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a"); label("ENEMY HEALTH x" + Math.pow(2, Math.floor(wave / 10)) + " NOW!", W / 2, 100, "#ff004d"); label("ARMOR! SNIPER/CANNON ONLY", W / 2, 150, "#9fd3ff"); }
     else if (!waveActive) label(banner || "PRESS START WAVE " + (wave + 1), W / 2, 50, "#ffc94a");
     posterizeCanvas(cv, ctx);
   }
