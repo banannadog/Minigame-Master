@@ -419,6 +419,35 @@ const Katana = (() => {
     particles = particles.filter(p => p.life > 0);
   }
 
+
+  /* ----- 8-bit pass: hard edges, fixed palette, nearest-color snapping ----- */
+  const PALETTE = ["000000","1a1210","2a1f2f","3a2530","4a2c2a","1d2b53","5f574f","c2c3c7","fff1e8","f3e9d2",
+    "d7263d","ff004d","ffa300","ffc94a","ffec27","00e436","4ade80","5ab0ff","29adff","b9803f","6b4620",
+    "ab5236","c9a66b","8a7a6a","3a2b22","5a3d30","222222","cfd8e3","a99d90","d0d0d0"]
+    .map(h => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  function posterize() {
+    const w = cv.width, h = cv.height;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (d[i + 3] < 70) { d[i + 3] = 0; continue; }        // kill anti-aliased fringe
+        const o = 0;
+        const r = d[i] + o, g = d[i + 1] + o, b = d[i + 2] + o;
+        let best = 0, bd = 1e9;
+        for (let p = 0; p < PALETTE.length; p++) {
+          const c = PALETTE[p], dr = r - c[0], dg = g - c[1], db = b - c[2];
+          const dist = dr * dr + dg * dg + db * db;
+          if (dist < bd) { bd = dist; best = p; }
+        }
+        const c = PALETTE[best];
+        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
   function drawBox(b, alpha = 1) {
     ctx.save();
     ctx.translate(b.x, b.y); ctx.rotate(b.rot + (b.swing || 0));
@@ -434,9 +463,8 @@ const Katana = (() => {
     ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
     ctx.imageSmoothingEnabled = false;
     // background
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#2a1f2f"); g.addColorStop(1, "#4a2c2a");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const SKY = ["#2a1f2f", "#2a1f2f", "#3a2530", "#3a2530", "#4a2c2a", "#4a2c2a"];   // stepped bands, no smooth gradient
+    SKY.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * H / SKY.length, W, H / SKY.length + 1); });
     // moon
     ctx.fillStyle = "#f3e9d2"; ctx.beginPath(); ctx.arc(660, 110, 44, 0, 7); ctx.fill();
     // beam + floor
@@ -446,7 +474,7 @@ const Katana = (() => {
     ctx.strokeStyle = "#5a3d30"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(W, FLOOR); ctx.stroke();
 
     // rope
-    ctx.strokeStyle = "#c9a66b"; ctx.lineWidth = 5; ctx.lineCap = "round";
+    ctx.strokeStyle = "#c9a66b"; ctx.lineWidth = 8; ctx.lineCap = "butt";
     if (state === "waiting") {
       ctx.beginPath(); ctx.moveTo(ANCHOR.x, ANCHOR.y + 6);
       ctx.lineTo(box.x, box.y - box.size / 2); ctx.stroke();
@@ -519,6 +547,7 @@ const Katana = (() => {
     }
 
     drawKatana(now);
+    posterize();
   }
 
   function drawKatana(now) {
@@ -531,7 +560,7 @@ const Katana = (() => {
     }
     drawStickman(now);
     // pointer ring
-    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 2;
+    ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2); ctx.stroke();
   }
 
@@ -553,7 +582,7 @@ const Katana = (() => {
 
     ctx.save();
     ctx.strokeStyle = "#f4ece2"; ctx.fillStyle = "#f4ece2";
-    ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = 8; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
     // legs
     ctx.beginPath();
     ctx.moveTo(X - 22, FEET); ctx.lineTo(X - 4, HIP + 4); ctx.lineTo(X, HIP);
@@ -563,11 +592,11 @@ const Katana = (() => {
     ctx.beginPath(); ctx.moveTo(X, HIP); ctx.lineTo(sh.x, sh.y); ctx.stroke();
     // head + headband
     const head = { x: sh.x + lean * 0.3, y: NECK - 12 };
-    ctx.beginPath(); ctx.arc(head.x, head.y, 15, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = "#d7263d"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(head.x, head.y, 15, 0, Math.PI * 2); ctx.lineWidth = 8; ctx.stroke(); ctx.lineWidth = 8;
+    ctx.strokeStyle = "#d7263d"; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.moveTo(head.x - 15, head.y - 4); ctx.lineTo(head.x + 15, head.y - 4); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(head.x - 15, head.y - 4); ctx.lineTo(head.x - 26, head.y + 2); ctx.stroke();
-    ctx.strokeStyle = "#f4ece2"; ctx.lineWidth = 5;
+    ctx.strokeStyle = "#f4ece2"; ctx.lineWidth = 8;
     // back arm resting on hip
     ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x - 22, sh.y + 22); ctx.lineTo(X - 6, HIP - 6); ctx.stroke();
     // sword arm
@@ -579,7 +608,7 @@ const Katana = (() => {
     for (let x = -14; x < -2; x += 5) { ctx.beginPath(); ctx.moveTo(x, -3.5); ctx.lineTo(x + 3, 3.5); ctx.stroke(); }
     ctx.fillStyle = "#ffc94a"; ctx.fillRect(0, -8, 4, 16);          // guard
     ctx.fillStyle = "#cfd8e3"; ctx.beginPath();                      // blade
-    ctx.moveTo(4, -3); ctx.lineTo(92, -2); ctx.lineTo(102, 2); ctx.lineTo(4, 3); ctx.closePath(); ctx.fill();
+    ctx.moveTo(4, -5); ctx.lineTo(92, -4); ctx.lineTo(104, 2); ctx.lineTo(4, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
