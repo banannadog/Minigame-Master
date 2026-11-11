@@ -1058,7 +1058,7 @@ const TD = (() => {
   const PADS = [[100, 200], [260, 200], [300, 345], [500, 200], [560, 350], [700, 260],
                 [700, 60], [320, 60], [100, 360], [450, 470], [190, 440], [420, 350]];
   const TYPES = {
-    stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "1 damage, near enemies" },
+    stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "3 damage, near enemies" },
     sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
     fast:   { name: "Fast stickman", cost: 220, range: 110, cd: 0.02, desc: "2 damage every 20ms" },
     wizard: { name: "Wizard",        cost: 150, range: 230, cd: 1.0,  desc: "2 dmg + slow or burn 2s" }
@@ -1142,7 +1142,7 @@ const TD = (() => {
     t.face = e.x >= t.x ? 1 : -1; t.flash = 0.12;
     const mx = t.x + t.face * 24, my = t.y - 10;
     let col = "#fff1e8", w = 6, life = 0.08;
-    if (t.type === "stick") { damage(e, 1); beep(220, 0.04, "square", 0.05); }
+    if (t.type === "stick") { damage(e, 3); beep(220, 0.04, "square", 0.05); }
     else if (t.type === "sniper") {
       damage(e, (dist <= 120 ? 6 : 4) + 2 * t.lv.dmg); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
     } else if (t.type === "fast") {
