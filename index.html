@@ -59,6 +59,16 @@
   .help { color: var(--muted); font-size: .6rem; line-height: 1.9; text-align: center; max-width: 560px; margin: 10px 0; }
   .tiers { color: var(--muted); font-size: .55rem; line-height: 1.9; max-width: 640px; text-align: center; margin-top: 10px; }
   .tiers b.p { color: var(--gold); }
+  .actions { display: flex; gap: 10px; margin: 12px 0 6px; }
+  button.btn.big { font-size: .95rem; padding: 18px 34px; touch-action: manipulation; user-select: none; box-shadow: 4px 4px 0 #000; }
+  button.btn.big:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+  button.btn:disabled { opacity: .35; cursor: not-allowed; filter: none; }
+  .shop { display: grid; gap: 8px; width: 100%; max-width: 800px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .up { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
+    font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .up small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
+  .up:not(:disabled):hover { border-color: var(--gold); }
+  .up:disabled { opacity: .45; cursor: not-allowed; }
   /* side games */
   #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
     border: 2px solid #3a322c; border-radius: 0; overflow: hidden; touch-action: manipulation; }
@@ -83,6 +93,11 @@
       <canvas class="ico" data-ico="katana" width="12" height="12"></canvas><h3>Katana Slice</h3>
       <p>A box hangs from a rope. The rope snaps at a random moment. Slice the box before it lands.</p>
       <div class="best" id="bestKatana"></div>
+    </button>
+    <button class="card" data-go="snow">
+      <canvas class="ico" data-ico="snow" width="12" height="12"></canvas><h3>Snow Fight</h3>
+      <p>Spam to make snowballs, aim and throw them at the bot's base, then spend points on upgrades.</p>
+      <div class="best" id="bestSnow"></div>
     </button>
     <button class="card" data-go="tap">
       <canvas class="ico" data-ico="target" width="12" height="12"></canvas><h3>Target Tap</h3>
@@ -133,6 +148,49 @@
   </div>
 </section>
 
+<!-- SNOW FIGHT: difficulty -->
+<section id="sDiff" class="screen">
+  <h2><canvas class="ico sm" data-ico="snow" width="12" height="12"></canvas> Snow Fight</h2>
+  <p class="sub">Pick how good the bot is at snowball fights.</p>
+  <div class="diffs">
+    <button class="diff" data-d="easy"><b>Easy</b><small>A little bad at snowballs</small></button>
+    <button class="diff" data-d="medium"><b>Medium</b><small>Good at snowballs</small></button>
+    <button class="diff" data-d="hard"><b>Hard</b><small>Very good at snowballs</small></button>
+  </div>
+  <p class="help">Each round: spam SPAM (or the space bar) to make snowballs, press DONE, then aim with the mouse
+    or finger and click to throw. A hit on the enemy base is worth 2 points. Spend points on upgrades.
+    Break the other base to win.</p>
+  <div class="tiers">Taller base 8 pts · Stronger base 10 pts · Faster snowballs 6 pts · Better aim 6 pts</div>
+  <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
+</section>
+
+<!-- SNOW FIGHT: game -->
+<section id="sGame" class="screen">
+  <div class="hud"><span id="sRound">Round 1</span><span id="sHp">You 20 · Bot 20</span><span id="sPts">Points 0</span></div>
+  <div class="hud"><span id="sBalls">Snowballs 0</span><span id="sTime">Time 5</span></div>
+  <canvas id="sv" width="200" height="140"></canvas>
+  <div class="actions">
+    <button class="btn big" id="sSpam">SPAM!</button>
+    <button class="btn alt big" id="sDone">DONE</button>
+  </div>
+  <div class="shop">
+    <button class="up" data-up="tall"></button><button class="up" data-up="strong"></button>
+    <button class="up" data-up="fast"></button><button class="up" data-up="aim"></button>
+  </div>
+  <p class="help" id="sHelp"></p>
+</section>
+
+<!-- SNOW FIGHT: summary -->
+<section id="sEnd" class="screen">
+  <div class="summary">
+    <h2 id="sEndTitle">You win!</h2>
+    <table id="sEndTable"></table>
+    <button class="btn" id="sAgain">Play again</button>
+    <button class="btn alt" data-go="sDiff">Change difficulty</button>
+    <button class="btn alt" data-go="menu">Menu</button>
+  </div>
+</section>
+
 <!-- TARGET TAP -->
 <section id="tap" class="screen">
   <h2><canvas class="ico sm" data-ico="target" width="12" height="12"></canvas> Target Tap</h2>
@@ -167,17 +225,21 @@ function show(id) {
   $$(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   if (id !== "kGame") Katana.stop();
   if (id !== "tap") Tap.stop();
+  if (id !== "sGame") Snow.stop();
   if (id === "menu") refreshBest();
 }
 $$("[data-go]").forEach(b => b.addEventListener("click", () => {
   const g = b.dataset.go;
-  show(g === "katana" ? "kDiff" : g);
+  show({ katana: "kDiff", snow: "sDiff" }[g] || g);
 }));
 function refreshBest() {
   const k = store.get("mm_katana", {});
   const parts = ["easy", "medium", "hard"].filter(d => k[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + k[d]);
   $("#bestKatana").textContent = parts.length ? "Best: " + parts.join(" · ") : "";
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
+  const sw = store.get("mm_snow", {});
+  const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
+  $("#bestSnow").textContent = sp.length ? "Wins: " + sp.join(" · ") : "";
   const m = store.get("mm_mem", 0); $("#bestMemory").textContent = m ? "Best: level " + m : "";
 }
 
@@ -200,6 +262,30 @@ const sfx = {
   perfect() { beep(880, 0.12, "triangle", 0.18); setTimeout(() => beep(1320, 0.25, "triangle", 0.18), 90); },
   bad() { beep(120, 0.3, "square", 0.12); }
 };
+
+
+/* ---------- shared 8-bit pass: hard edges, fixed palette ---------- */
+const PALETTE = ["000000","1a1210","2a1f2f","3a2530","4a2c2a","1d2b53","5f574f","c2c3c7","fff1e8","f3e9d2",
+  "d7263d","ff004d","ffa300","ffc94a","ffec27","00e436","4ade80","5ab0ff","29adff","b9803f","6b4620",
+  "ab5236","c9a66b","8a7a6a","3a2b22","5a3d30","222222","cfd8e3","a99d90","d0d0d0",
+  "e8f4ff","9fd3ff","6aa7d8","3b6ea5","20395f","0f1b33"]
+  .map(h => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+function posterizeCanvas(cv, ctx) {
+  const w = cv.width, h = cv.height;
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 70) { d[i + 3] = 0; continue; }          // kill anti-aliased fringe
+    let best = 0, bd = 1e9;
+    for (let p = 0; p < PALETTE.length; p++) {
+      const c = PALETTE[p], dr = d[i] - c[0], dg = d[i + 1] - c[1], db = d[i + 2] - c[2];
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bd) { bd = dist; best = p; }
+    }
+    const c = PALETTE[best];
+    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
 
 /* =====================================================
    KATANA SLICE
@@ -421,33 +507,7 @@ const Katana = (() => {
   }
 
 
-  /* ----- 8-bit pass: hard edges, fixed palette, nearest-color snapping ----- */
-  const PALETTE = ["000000","1a1210","2a1f2f","3a2530","4a2c2a","1d2b53","5f574f","c2c3c7","fff1e8","f3e9d2",
-    "d7263d","ff004d","ffa300","ffc94a","ffec27","00e436","4ade80","5ab0ff","29adff","b9803f","6b4620",
-    "ab5236","c9a66b","8a7a6a","3a2b22","5a3d30","222222","cfd8e3","a99d90","d0d0d0"]
-    .map(h => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
-  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  function posterize() {
-    const w = cv.width, h = cv.height;
-    const img = ctx.getImageData(0, 0, w, h), d = img.data;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        if (d[i + 3] < 70) { d[i + 3] = 0; continue; }        // kill anti-aliased fringe
-        const o = 0;
-        const r = d[i] + o, g = d[i + 1] + o, b = d[i + 2] + o;
-        let best = 0, bd = 1e9;
-        for (let p = 0; p < PALETTE.length; p++) {
-          const c = PALETTE[p], dr = r - c[0], dg = g - c[1], db = b - c[2];
-          const dist = dr * dr + dg * dg + db * db;
-          if (dist < bd) { bd = dist; best = p; }
-        }
-        const c = PALETTE[best];
-        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-  }
+  function posterize() { posterizeCanvas(cv, ctx); }
 
   function drawBox(b, alpha = 1) {
     ctx.save();
@@ -620,6 +680,289 @@ const Katana = (() => {
 })();
 
 /* =====================================================
+   SNOW FIGHT
+   ===================================================== */
+const Snow = (() => {
+  const cv = $("#sv"), ctx = cv.getContext("2d");
+  const W = 800, H = 560, PX = 4, GROUND = 480;
+  const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
+  const COST = { tall: 8, strong: 10, fast: 6, aim: 6 }, MAXLV = 3, BUILD_TIME = 5, HIT_POINTS = 2;
+  const NAMES = { tall: "Taller base", strong: "Stronger base", fast: "Faster snowballs", aim: "Better aim" };
+  const BOTS = { easy: { balls: 4, spread: 110 }, medium: { balls: 6, spread: 70 }, hard: { balls: 7, spread: 45 } };
+  const SIDES = {
+    me:  { x0: 170, x1: 260, man: 90,  dir: 1,  color: "#29adff" },
+    bot: { x0: 540, x1: 630, man: 710, dir: -1, color: "#ff004d" }
+  };
+  const FLAKES = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: 30 + Math.random() * 40 }));
+  const STARS = Array.from({ length: 22 }, () => ({ x: Math.random() * W, y: Math.random() * 260 }));
+
+  let diff = "easy", running = false, raf = 0, prev = 0, phase = "idle", round = 0, timeLeft = 0;
+  let me, bot, shots = [], parts = [], floats = [], botQ = 0, botT = 0, botDelay = 0, endTimer = 0;
+  let aim = { x: 560, y: 420 };
+
+  const fighter = () => ({ hp: 20, maxHp: 20, pts: 0, hits: 0, flash: 0, throwT: 0, balls: 0, prog: 0,
+    lv: { tall: 0, strong: 0, fast: 0, aim: 0 } });
+  const side = k => (k === "me" ? me : bot);
+  const baseH = f => 70 + 30 * f.lv.tall;
+  const dmg = f => 1 - 0.2 * f.lv.strong;
+  const myAim = () => 60 * Math.pow(0.75, me.lv.aim);               // radius the ball can wander from the crosshair
+  const botAim = () => BOTS[diff].spread * Math.pow(0.78, bot.lv.aim);
+
+  function start(d) {
+    diff = d; me = fighter(); bot = fighter(); round = 0;
+    shots = []; parts = []; floats = []; botQ = 0;
+    show("sGame");
+    running = true; prev = performance.now();
+    startBuild();
+    loop();
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); clearTimeout(endTimer); }
+
+  function buy(f, k) {
+    if (f.lv[k] >= MAXLV || f.pts < COST[k]) return false;
+    f.pts -= COST[k]; f.lv[k]++;
+    if (k === "tall") { f.maxHp += 6; f.hp += 6; }
+    return true;
+  }
+  function botBuy() {
+    for (;;) {
+      const next = ["aim", "fast", "strong", "tall"].filter(k => bot.lv[k] < MAXLV).sort((a, b) => bot.lv[a] - bot.lv[b])[0];
+      if (!next || !buy(bot, next)) return;
+    }
+  }
+
+  /* ----- phases ----- */
+  function startBuild() { round++; phase = "build"; timeLeft = BUILD_TIME; me.balls = 0; me.prog = 0; }
+  function spam() {
+    if (!running || phase !== "build") return;
+    me.prog += 0.2 + 0.1 * me.lv.fast;
+    while (me.prog >= 0.999) { me.prog -= 1; me.balls++; }
+    beep(420 + me.balls * 12, 0.04, "square", 0.05);
+  }
+  function toAim() {
+    if (phase !== "build") return;
+    if (me.balls <= 0) startBot(); else phase = "aim";
+  }
+  function startBot() {
+    phase = "bot"; botBuy();
+    botQ = BOTS[diff].balls + bot.lv.fast; botDelay = 1; botT = 0;
+  }
+  function finish(winner) {
+    phase = "over"; botQ = 0;
+    endTimer = setTimeout(() => showEnd(winner), 1400);
+  }
+  function showEnd(winner) {
+    stop();
+    if (winner === "me") {
+      const w = store.get("mm_snow", {}); w[diff] = (w[diff] || 0) + 1; store.set("mm_snow", w);
+    }
+    $("#sEndTitle").textContent = winner === "me" ? "You win!" : "Bot wins";
+    const up = f => Object.values(f.lv).reduce((a, b) => a + b, 0);
+    $("#sEndTable").innerHTML = "<tr><th></th><th>You</th><th>Bot</th></tr>" +
+      "<tr><td>Hits</td><td>" + me.hits + "</td><td>" + bot.hits + "</td></tr>" +
+      "<tr><td>Upgrades</td><td>" + up(me) + "</td><td>" + up(bot) + "</td></tr>" +
+      "<tr><td>Rounds</td><td colspan='2'>" + round + "</td></tr>";
+    show("sEnd");
+  }
+
+  /* ----- throwing ----- */
+  function throwBall(owner, tx, ty) {
+    const S = SIDES[owner];
+    shots.push({ owner, sx: S.man + S.dir * 22, sy: GROUND - 125, tx, ty, t: 0, dur: 0.7 });
+    side(owner).throwT = 0.25;
+    beep(300, 0.08, "triangle", 0.08, 520);
+  }
+  function scatter(cx, cy, r) {
+    const a = Math.random() * Math.PI * 2, d = r * Math.sqrt(Math.random());
+    return { x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d };
+  }
+  function playerThrow(x, y) {
+    if (phase !== "aim" || me.balls <= 0) return;
+    me.balls--;
+    const t = scatter(x, y, myAim());
+    throwBall("me", t.x, t.y);
+  }
+  function botThrow() {
+    const R = SIDES.me, t = scatter((R.x0 + R.x1) / 2, GROUND - baseH(me) / 2, botAim());
+    throwBall("bot", t.x, t.y);
+  }
+  function puff(x, y, n, c) {
+    for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - .5) * 320, vy: -Math.random() * 280,
+      life: .5 + Math.random() * .3, r: 6 + Math.random() * 6, c });
+  }
+  function land(sh) {
+    const tgt = sh.owner === "me" ? "bot" : "me", T = side(tgt), A = side(sh.owner), R = SIDES[tgt];
+    const top = GROUND - baseH(T);
+    const hit = phase !== "over" && sh.tx >= R.x0 - 6 && sh.tx <= R.x1 + 6 && sh.ty >= top - 6 && sh.ty <= GROUND + 10;
+    if (!hit) { puff(sh.tx, sh.ty, 6, "#e8f4ff"); beep(160, 0.06, "sine", 0.06); return; }
+    T.hp = Math.max(0, T.hp - dmg(T)); A.pts += HIT_POINTS; A.hits++; T.flash = 0.35;
+    floats.push({ x: sh.tx, y: sh.ty - 20, txt: "+" + HIT_POINTS, life: 0.9, c: sh.owner === "me" ? "#ffc94a" : "#ff004d" });
+    puff(sh.tx, sh.ty, 16, "#e8f4ff");
+    beep(220, 0.14, "square", 0.12, 90);
+    if (T.hp <= 0) finish(sh.owner);
+  }
+
+  /* ----- input ----- */
+  function pos(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+  }
+  cv.addEventListener("pointermove", e => { aim = pos(e); });
+  cv.addEventListener("pointerdown", e => {
+    aim = pos(e);
+    if (phase === "build") spam(); else playerThrow(aim.x, aim.y);
+  });
+  const spamBtn = $("#sSpam"), doneBtn = $("#sDone");
+  spamBtn.addEventListener("pointerdown", e => { e.preventDefault(); spam(); });
+  doneBtn.addEventListener("click", () => {
+    if (phase === "build") toAim();
+    else if (phase === "aim") me.balls = 0;
+  });
+  $$(".up").forEach(b => b.addEventListener("click", () => {
+    if (!running || phase === "over") return;
+    if (buy(me, b.dataset.up)) beep(660, 0.12, "triangle", 0.15, 990);
+  }));
+  document.addEventListener("keydown", e => {
+    if (!running || e.code !== "Space") return;
+    e.preventDefault(); if (!e.repeat) spam();
+  });
+  document.addEventListener("keyup", e => { if (running && e.code === "Space") e.preventDefault(); });
+  $("#sAgain").addEventListener("click", () => start(diff));
+  $$("#sDiff .diff").forEach(b => b.addEventListener("click", () => start(b.dataset.d)));
+
+  /* ----- loop ----- */
+  function loop(ts = performance.now()) {
+    if (!running) return;
+    const dt = Math.min((ts - prev) / 1000 || 0.016, 0.05); prev = ts;
+    update(dt); draw(ts); hud();
+    raf = requestAnimationFrame(loop);
+  }
+  function update(dt) {
+    FLAKES.forEach(f => { f.y += f.s * dt; f.x += Math.sin(f.y / 40) * 10 * dt; if (f.y > H) { f.y = -10; f.x = Math.random() * W; } });
+    if (phase === "build") { timeLeft -= dt; if (timeLeft <= 0) toAim(); }
+    else if (phase === "aim") { if (me.balls <= 0 && !shots.length) startBot(); }
+    else if (phase === "bot") {
+      botDelay -= dt;
+      if (botDelay <= 0) {
+        if (botQ > 0) { botT -= dt; if (botT <= 0) { botThrow(); botQ--; botT = 0.4; } }
+        else if (!shots.length) startBuild();
+      }
+    }
+    [me, bot].forEach(f => { f.flash = Math.max(0, f.flash - dt); f.throwT = Math.max(0, f.throwT - dt); });
+    for (const sh of shots) sh.t += dt / sh.dur;
+    shots.filter(sh => sh.t >= 1).forEach(land);
+    shots = shots.filter(sh => sh.t < 1);
+    parts.forEach(q => { q.vy += 700 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; });
+    parts = parts.filter(q => q.life > 0);
+    floats.forEach(f => { f.y -= 50 * dt; f.life -= dt; });
+    floats = floats.filter(f => f.life > 0);
+  }
+
+  let lastShop = [];
+  function hud() {
+    $("#sRound").textContent = "Round " + round;
+    $("#sHp").textContent = "You " + Math.ceil(me.hp) + " · Bot " + Math.ceil(bot.hp);
+    $("#sPts").textContent = "Points " + me.pts;
+    $("#sBalls").textContent = "Snowballs " + me.balls;
+    $("#sTime").textContent = phase === "build" ? "Time " + Math.ceil(timeLeft) : phase === "aim" ? "Throw!" : phase === "bot" ? "Bot turn" : "";
+    spamBtn.disabled = phase !== "build";
+    doneBtn.disabled = !(phase === "build" || phase === "aim");
+    doneBtn.textContent = phase === "aim" ? "SKIP REST" : "DONE";
+    $("#sHelp").textContent = phase === "build" ? "Spam SPAM or the space bar to make snowballs, then press DONE."
+      : phase === "aim" ? "Move to aim and click to throw. The circle shows where a ball can land."
+      : phase === "bot" ? "The bot is throwing at your base." : "";
+    $$(".up").forEach((b, i) => {
+      const k = b.dataset.up, lv = me.lv[k];
+      const html = NAMES[k] + "<small>" + (lv >= MAXLV ? "MAX" : COST[k] + " pts") + " · Lv " + lv + "/" + MAXLV + "</small>";
+      if (lastShop[i] !== html) { b.innerHTML = html; lastShop[i] = html; }
+      b.disabled = phase === "over" || lv >= MAXLV || me.pts < COST[k];
+    });
+    cv.style.cursor = phase === "aim" ? "none" : "pointer";
+  }
+
+  /* ----- drawing ----- */
+  function label(t, x, y, color, size = 32) {
+    ctx.font = size + "px " + FONT; ctx.textAlign = "center";
+    ctx.lineWidth = 8; ctx.lineJoin = "round"; ctx.strokeStyle = "#0f1b33"; ctx.strokeText(t, x, y);
+    ctx.fillStyle = color; ctx.fillText(t, x, y);
+  }
+  function drawMan(f, S) {
+    const x = S.man, hip = GROUND - 62, neck = GROUND - 118, d = S.dir;
+    ctx.save();
+    ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 8; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+    ctx.beginPath(); ctx.moveTo(x - 20, GROUND); ctx.lineTo(x, hip); ctx.lineTo(x + 20, GROUND); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, neck + 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, neck + 8);                       // throwing arm
+    if (f.throwT > 0) ctx.lineTo(x + d * 14, neck - 24); else ctx.lineTo(x + d * 22, neck + 26);
+    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, neck + 8); ctx.lineTo(x - d * 18, neck + 34); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, neck - 14, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = S.color; ctx.lineWidth = 8;                   // scarf
+    ctx.beginPath(); ctx.moveTo(x - d * 14, neck + 4); ctx.lineTo(x + d * 14, neck + 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - d * 14, neck + 4); ctx.lineTo(x - d * 24, neck + 22); ctx.stroke();
+    ctx.restore();
+  }
+  function drawBase(f, S) {
+    const h = baseH(f), top = GROUND - h, w = S.x1 - S.x0;
+    const blink = f.flash > 0 && Math.floor(f.flash * 20) % 2 === 0;
+    ctx.fillStyle = blink ? "#ff004d" : "#e8f4ff";
+    ctx.fillRect(S.x0, top, w, h);
+    ctx.fillRect(S.x0, top - 14, 24, 14); ctx.fillRect(S.x0 + 33, top - 14, 24, 14); ctx.fillRect(S.x1 - 24, top - 14, 24, 14);
+    ctx.fillStyle = "#9fd3ff";                                       // block seams
+    for (let y = top + 30; y < GROUND; y += 30) ctx.fillRect(S.x0, y, w, 4);
+    ctx.fillRect(S.x0 + w / 2, top + 30, 4, 30);
+    if (f.lv.strong > 0) {                                           // ice armour grows with strength
+      ctx.strokeStyle = "#3b6ea5"; ctx.lineWidth = 4 * f.lv.strong;
+      ctx.strokeRect(S.x0 + 2 * f.lv.strong, top + 2 * f.lv.strong, w - 4 * f.lv.strong, h - 4 * f.lv.strong);
+    }
+    ctx.fillStyle = "#5f574f"; ctx.fillRect(S.x0 + w / 2 - 2, top - 46, 4, 34);   // flag
+    ctx.fillStyle = S.color; ctx.fillRect(S.x0 + w / 2 + 2, top - 46, 22, 14);
+    const bw = w + 10, bx = S.x0 - 5, by = top - 70, frac = f.hp / f.maxHp;       // health bar
+    ctx.fillStyle = "#0f1b33"; ctx.fillRect(bx - 4, by - 4, bw + 8, 20);
+    ctx.fillStyle = frac > 0.4 ? "#00e436" : "#ff004d"; ctx.fillRect(bx, by, bw * frac, 12);
+  }
+  function draw(now) {
+    ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ["#0f1b33", "#0f1b33", "#20395f", "#20395f", "#3b6ea5", "#3b6ea5"].forEach((c, i) => {
+      ctx.fillStyle = c; ctx.fillRect(0, i * GROUND / 6, W, GROUND / 6 + 1);
+    });
+    ctx.fillStyle = "#fff1e8"; STARS.forEach(s => ctx.fillRect(s.x, s.y, 6, 6));
+    ctx.beginPath(); ctx.arc(690, 90, 34, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e8f4ff"; ctx.fillRect(0, GROUND, W, H - GROUND);
+    ctx.fillStyle = "#9fd3ff"; ctx.fillRect(0, GROUND, W, 10); ctx.fillRect(0, GROUND + 56, W, 6);
+
+    drawBase(me, SIDES.me); drawBase(bot, SIDES.bot);
+    drawMan(me, SIDES.me); drawMan(bot, SIDES.bot);
+
+    for (const sh of shots) {
+      const x = sh.sx + (sh.tx - sh.sx) * sh.t, y = sh.sy + (sh.ty - sh.sy) * sh.t - 4 * 120 * sh.t * (1 - sh.t);
+      ctx.fillStyle = "#9fd3ff"; ctx.beginPath(); ctx.arc(x + 2, y + 2, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff1e8"; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill();
+    }
+    parts.forEach(q => { ctx.fillStyle = q.c; ctx.fillRect(q.x, q.y, q.r, q.r); });
+    ctx.fillStyle = "#fff1e8"; FLAKES.forEach(f => ctx.fillRect(f.x, f.y, 8, 8));
+    floats.forEach(f => label(f.txt, f.x, f.y, f.c));
+
+    if (phase === "build") { label("SPAM THE BUTTON!", W / 2, 60, "#ffc94a"); label("SNOWBALLS " + me.balls, W / 2, 110, "#fff1e8"); }
+    else if (phase === "aim") { label("AIM + CLICK TO THROW", W / 2, 60, "#ffc94a"); label("BALLS LEFT " + me.balls, W / 2, 110, "#fff1e8"); }
+    else if (phase === "bot") label(botDelay > 0 ? "BOT MAKES SNOWBALLS" : "BOT IS THROWING!", W / 2, 60, "#ff004d");
+    else if (phase === "over") label(bot.hp <= 0 ? "YOU WIN!" : "YOU LOSE", W / 2, 230, bot.hp <= 0 ? "#ffc94a" : "#ff004d", 64);
+
+    if (phase === "aim") {
+      const r = myAim();
+      ctx.strokeStyle = "#ff004d"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(aim.x, aim.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(aim.x - 12, aim.y); ctx.lineTo(aim.x + 12, aim.y);
+      ctx.moveTo(aim.x, aim.y - 12); ctx.lineTo(aim.x, aim.y + 12); ctx.stroke();
+    }
+    posterizeCanvas(cv, ctx);
+  }
+
+  return { start, stop };
+})();
+
+/* =====================================================
    TARGET TAP
    ===================================================== */
 const Tap = (() => {
@@ -696,7 +1039,7 @@ const Tap = (() => {
 
 /* ---------- pixel-art icons ---------- */
 (function () {
-  const COL = { w: "#cfd8e3", W: "#fff1e8", k: "#222222", y: "#ffc94a", r: "#ff004d", b: "#29adff", g: "#00e436" };
+  const COL = { w: "#cfd8e3", W: "#fff1e8", k: "#222222", y: "#ffc94a", r: "#ff004d", b: "#29adff", g: "#00e436", i: "#9fd3ff" };
   const KATANA = [
     "..........ww",
     ".........wWw",
@@ -712,6 +1055,12 @@ const Tap = (() => {
     "kr.........."];
   function grid(name) {
     if (name === "katana") return KATANA;
+    if (name === "snow") {
+      const out = [];
+      for (let y = 0; y < 12; y++) { let r = ""; for (let x = 0; x < 12; x++) {
+        const d = Math.hypot(x - 5.5, y - 5.5); r += d < 5.6 ? (x + y > 12 ? "i" : "W") : "."; } out.push(r); }
+      return out;
+    }
     const rows = [];
     for (let y = 0; y < 12; y++) {
       let r = "";
