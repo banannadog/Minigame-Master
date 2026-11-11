@@ -262,7 +262,7 @@
       <button class="tdm" data-m="lowhp"></button><button class="tdm" data-m="highhp"></button>
     </div>
   </div>
-  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Blue squares are far slots for the Sniper and Cannonball stickman only. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Blue squares are far from the path, so only long-range helpers like the Sniper and Cannonball stickman can reach it from there. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
 </section>
 
 <section id="tdEnd" class="screen">
@@ -1084,7 +1084,7 @@ const TD = (() => {
   const PADS = [[150, 200], [150, 40], [190, 330], [340, 250], [410, 300], [480, 250], [640, 260], [740, 60],
                 [740, 230], [880, 60], [840, 240], [1020, 330], [1020, 520], [1030, 640], [900, 650], [790, 640],
                 [610, 650], [540, 480], [410, 470], [300, 470], [290, 650], [470, 650], [620, 470],
-                // far slots: sniper and cannonball only, flagged with a 1
+                // far slots, away from the path: any helper fits, but only long-range ones reach (flagged with a 1)
                 [400, 50, 1], [420, 190, 1], [720, 360, 1], [1050, 230, 1], [820, 540, 1], [150, 520, 1], [150, 730, 1], [540, 780, 1]];
   const TYPES = {
     stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "3 damage, near enemies" },
@@ -1247,7 +1247,6 @@ const TD = (() => {
     }
     if (t) { selTower = i; beep(500, 0.05, "square", 0.06); return; }
     const T = TYPES[sel];
-    if (P[2] && sel !== "sniper" && sel !== "cannon") { floats.push({ x: P[0], y: P[1] - 40, txt: "SNIPER / CANNON ONLY", life: 1.1, c: "#29adff" }); beep(120, 0.2, "square", 0.1); return; }
     if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
     coins -= T.cost; built++;
     towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", lv: { dmg: 0, rate: 0, size: 0, range: 0, slow: 0, burn: 0, hot: 0 } };
