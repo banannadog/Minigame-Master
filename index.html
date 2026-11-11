@@ -31,7 +31,8 @@
   .card { box-shadow: 4px 4px 0 #000; background: var(--panel); border: 2px solid #3a322c; border-radius: 0; padding: 18px;
     cursor: pointer; transition: border-color .12s; text-align: left; color: inherit; font: inherit; }
   .card:hover { border-color: var(--red); }
-  .card .emoji { font-size: 2.2rem; image-rendering: pixelated; }
+  canvas.ico { background: transparent; border: 0; box-shadow: none; border-radius: 0; max-width: none; cursor: inherit; width: 48px; height: 48px; image-rendering: pixelated; display: block; }
+  canvas.ico.sm { width: 24px; height: 24px; display: inline-block; vertical-align: -3px; }
   .card h3 { margin: 6px 0 4px; }
   .card p { margin: 0; color: var(--muted); font-size: .6rem; line-height: 1.8; }
   .card .best { margin-top: 8px; font-size: .55rem; color: var(--gold); }
@@ -79,17 +80,17 @@
   <p class="sub">Pick a game. Beat your best scores.</p>
   <div class="cards">
     <button class="card" data-go="katana">
-      <div class="emoji">⚔️</div><h3>Katana Slice</h3>
+      <canvas class="ico" data-ico="katana" width="12" height="12"></canvas><h3>Katana Slice</h3>
       <p>A box hangs from a rope. The rope snaps at a random moment. Slice the box before it lands.</p>
       <div class="best" id="bestKatana"></div>
     </button>
     <button class="card" data-go="tap">
-      <div class="emoji">🎯</div><h3>Target Tap</h3>
+      <canvas class="ico" data-ico="target" width="12" height="12"></canvas><h3>Target Tap</h3>
       <p>Hit as many targets as you can in 20 seconds. They shrink the longer you survive.</p>
       <div class="best" id="bestTap"></div>
     </button>
     <button class="card" data-go="memory">
-      <div class="emoji">🧠</div><h3>Pattern Memory</h3>
+      <canvas class="ico" data-ico="pads" width="12" height="12"></canvas><h3>Pattern Memory</h3>
       <p>Watch the pads light up, then repeat the sequence. It gets one step longer each round.</p>
       <div class="best" id="bestMemory"></div>
     </button>
@@ -98,7 +99,7 @@
 
 <!-- KATANA: difficulty -->
 <section id="kDiff" class="screen">
-  <h2>⚔️ Katana Slice</h2>
+  <h2><canvas class="ico sm" data-ico="katana" width="12" height="12"></canvas> Katana Slice</h2>
   <p class="sub">Choose a difficulty. Smaller box, bigger score multiplier.</p>
   <div class="diffs">
     <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:64px;height:64px"></span><br><small>Big box · x1 score</small></button>
@@ -134,7 +135,7 @@
 
 <!-- TARGET TAP -->
 <section id="tap" class="screen">
-  <h2>🎯 Target Tap</h2>
+  <h2><canvas class="ico sm" data-ico="target" width="12" height="12"></canvas> Target Tap</h2>
   <div class="hud" style="max-width:800px"><span id="tapTime">Time 20</span><span id="tapScore">Hits 0</span></div>
   <div id="tapArea"></div>
   <p class="help" id="tapMsg">Click Start. Targets shrink as you hit more.</p>
@@ -143,7 +144,7 @@
 
 <!-- MEMORY -->
 <section id="memory" class="screen">
-  <h2>🧠 Pattern Memory</h2>
+  <h2><canvas class="ico sm" data-ico="pads" width="12" height="12"></canvas> Pattern Memory</h2>
   <div class="hud" style="max-width:360px"><span id="memLvl">Level 0</span></div>
   <div class="pads">
     <button class="pad" data-i="0"></button><button class="pad" data-i="1"></button>
@@ -690,6 +691,49 @@ const Tap = (() => {
     light(i, 200); idx++;
     if (idx === seq.length) { accepting = false; await sleep(700); grow(); }
   }));
+})();
+
+
+/* ---------- pixel-art icons ---------- */
+(function () {
+  const COL = { w: "#cfd8e3", W: "#fff1e8", k: "#222222", y: "#ffc94a", r: "#ff004d", b: "#29adff", g: "#00e436" };
+  const KATANA = [
+    "..........ww",
+    ".........wWw",
+    "........wWw.",
+    ".......wWw..",
+    "......wWw...",
+    ".....wWw....",
+    "..y.wWw.....",
+    "...yww......",
+    "..yyy.......",
+    ".kky........",
+    "kkr.........",
+    "kr.........."];
+  function grid(name) {
+    if (name === "katana") return KATANA;
+    const rows = [];
+    for (let y = 0; y < 12; y++) {
+      let r = "";
+      for (let x = 0; x < 12; x++) {
+        if (name === "target") {
+          const d = Math.hypot(x - 5.5, y - 5.5);
+          r += d < 1.6 ? "r" : d < 2.8 ? "W" : d < 4.0 ? "r" : d < 5.6 ? "W" : ".";
+        } else {
+          const inX = (x >= 1 && x <= 5) || (x >= 6 && x <= 10), inY = (y >= 1 && y <= 5) || (y >= 6 && y <= 10);
+          r += !inX || !inY ? "." : y <= 5 ? (x <= 5 ? "r" : "b") : (x <= 5 ? "g" : "y");
+        }
+      }
+      rows.push(r);
+    }
+    return rows;
+  }
+  $$("[data-ico]").forEach(c => {
+    const x = c.getContext("2d");
+    grid(c.dataset.ico).forEach((row, y) => [...row].forEach((ch, i) => {
+      if (COL[ch]) { x.fillStyle = COL[ch]; x.fillRect(i, y, 1, 1); }
+    }));
+  });
 })();
 
 refreshBest();
