@@ -66,6 +66,7 @@
   .shop { display: grid; gap: 8px; width: 100%; max-width: 800px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
   .up { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
     font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .up small.d { color: var(--muted); margin-top: 2px; }
   .up small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
   .up:not(:disabled):hover { border-color: var(--gold); }
   .up:disabled { opacity: .45; cursor: not-allowed; }
@@ -160,7 +161,7 @@
   <p class="help">Each round: spam SPAM (or the space bar) to make snowballs, press DONE, then aim with the mouse
     or finger and click to throw. A hit on the enemy base is worth 2 points. Spend points on upgrades.
     Break the other base to win.</p>
-  <div class="tiers">Taller base 8 pts · Stronger base 10 pts · Faster snowballs 6 pts · Better aim 6 pts · More health 7 pts</div>
+  <div class="tiers">Taller base 8 pts (blocks one hit every round) · Stronger base 10 pts · Faster snowballs 6 pts · Better aim 6 pts · More health 7 pts</div>
   <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
 </section>
 
@@ -688,6 +689,7 @@ const Snow = (() => {
   const W = 800, H = 560, PX = 4, GROUND = 480;
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
   const COST = { tall: 8, strong: 10, fast: 6, aim: 6, health: 7 }, MAXLV = 3, BUILD_TIME = 5, HIT_POINTS = 2;
+  const DESC = { tall: "Blocks 1 hit every round", strong: "Hits do 20% less damage", fast: "More snowballs per press", aim: "Smaller aim circle", health: "+8 health, healed now" };
   const NAMES = { tall: "Taller base", strong: "Stronger base", fast: "Faster snowballs", aim: "Better aim", health: "More health" };
   const BOTS = { easy: { balls: 5, spread: 95 }, medium: { balls: 7, spread: 60 }, hard: { balls: 9, spread: 38 } };
   const SIDES = {
@@ -701,10 +703,11 @@ const Snow = (() => {
   let me, bot, shots = [], parts = [], floats = [], botQ = 0, botT = 0, botDelay = 0, endTimer = 0;
   let aim = { x: 560, y: 420 };
 
-  const fighter = () => ({ hp: 20, maxHp: 20, pts: 0, hits: 0, flash: 0, throwT: 0, balls: 0, prog: 0,
+  const fighter = () => ({ hp: 20, maxHp: 20, pts: 0, hits: 0, flash: 0, throwT: 0, balls: 0, prog: 0, shield: 0,
     lv: { tall: 0, strong: 0, fast: 0, aim: 0, health: 0 } });
   const side = k => (k === "me" ? me : bot);
-  const baseH = f => 70 + 30 * f.lv.tall;
+  const CORE = 70;                                   // the part of a base that can be hit; extra height is only a shield
+  const baseH = f => CORE + 30 * f.lv.tall;
   const dmg = f => 1 - 0.2 * f.lv.strong;
   const myAim = () => 60 * Math.pow(0.75, me.lv.aim);               // radius the ball can wander from the crosshair
   const botAim = () => BOTS[diff].spread * Math.pow(0.78, bot.lv.aim);
@@ -722,7 +725,7 @@ const Snow = (() => {
   function buy(f, k) {
     if (f.lv[k] >= MAXLV || f.pts < COST[k]) return false;
     f.pts -= COST[k]; f.lv[k]++;
-    if (k === "tall") { f.maxHp += 6; f.hp += 6; }
+    if (k === "tall") f.shield++;
     if (k === "health") { f.maxHp += 8; f.hp += 8; }
     return true;
   }
@@ -734,7 +737,7 @@ const Snow = (() => {
   }
 
   /* ----- phases ----- */
-  function startBuild() { round++; phase = "build"; timeLeft = BUILD_TIME; me.balls = 0; me.prog = 0; }
+  function startBuild() { round++; me.shield = me.lv.tall; bot.shield = bot.lv.tall; phase = "build"; timeLeft = BUILD_TIME; me.balls = 0; me.prog = 0; }
   function spam() {
     if (!running || phase !== "build") return;
     me.prog += 0.2 + 0.1 * me.lv.fast;
@@ -785,7 +788,7 @@ const Snow = (() => {
     throwBall("me", t.x, t.y);
   }
   function botThrow() {
-    const R = SIDES.me, t = scatter((R.x0 + R.x1) / 2, GROUND - baseH(me) / 2, botAim());
+    const R = SIDES.me, t = scatter((R.x0 + R.x1) / 2, GROUND - CORE / 2, botAim());
     throwBall("bot", t.x, t.y);
   }
   function puff(x, y, n, c) {
@@ -794,9 +797,15 @@ const Snow = (() => {
   }
   function land(sh) {
     const tgt = sh.owner === "me" ? "bot" : "me", T = side(tgt), A = side(sh.owner), R = SIDES[tgt];
-    const top = GROUND - baseH(T);
+    const top = GROUND - CORE;
     const hit = phase !== "over" && sh.tx >= R.x0 - 6 && sh.tx <= R.x1 + 6 && sh.ty >= top - 6 && sh.ty <= GROUND + 10;
     if (!hit) { puff(sh.tx, sh.ty, 6, "#e8f4ff"); beep(160, 0.06, "sine", 0.06); return; }
+    if (T.shield > 0) {                                              // the extra snow layer soaks this hit
+      T.shield--; T.flash = 0.2;
+      floats.push({ x: sh.tx, y: sh.ty - 20, txt: "BLOCKED", life: 0.9, c: "#9fd3ff" });
+      puff(sh.tx, sh.ty, 10, "#9fd3ff"); beep(140, 0.1, "sawtooth", 0.08);
+      return;
+    }
     T.hp = Math.max(0, T.hp - dmg(T)); A.pts += HIT_POINTS; A.hits++; T.flash = 0.35;
     floats.push({ x: sh.tx, y: sh.ty - 20, txt: "+" + HIT_POINTS, life: 0.9, c: sh.owner === "me" ? "#ffc94a" : "#ff004d" });
     puff(sh.tx, sh.ty, 16, "#e8f4ff");
@@ -875,7 +884,7 @@ const Snow = (() => {
       : phase === "bot" ? "The bot is throwing at your base." : "";
     $$(".up").forEach((b, i) => {
       const k = b.dataset.up, lv = me.lv[k];
-      const html = NAMES[k] + "<small>" + (lv >= MAXLV ? "MAX" : COST[k] + " pts") + " · Lv " + lv + "/" + MAXLV + "</small>";
+      const html = NAMES[k] + "<small class='d'>" + DESC[k] + "</small><small>" + (lv >= MAXLV ? "MAX" : COST[k] + " pts") + " · Lv " + lv + "/" + MAXLV + "</small>";
       if (lastShop[i] !== html) { b.innerHTML = html; lastShop[i] = html; }
       b.disabled = phase === "over" || lv >= MAXLV || me.pts < COST[k];
     });
@@ -917,6 +926,7 @@ const Snow = (() => {
       ctx.strokeStyle = "#3b6ea5"; ctx.lineWidth = 4 * f.lv.strong;
       ctx.strokeRect(S.x0 + 2 * f.lv.strong, top + 2 * f.lv.strong, w - 4 * f.lv.strong, h - 4 * f.lv.strong);
     }
+    for (let i = 0; i < f.shield; i++) { ctx.fillStyle = "#3b6ea5"; ctx.fillRect(S.x0 + 10 + i * 26, top + 10, 18, 18); }   // shield layers left this round
     ctx.fillStyle = "#5f574f"; ctx.fillRect(S.x0 + w / 2 - 2, top - 46, 4, 34);   // flag
     ctx.fillStyle = S.color; ctx.fillRect(S.x0 + w / 2 + 2, top - 46, 22, 14);
     const bw = w + 10, bx = S.x0 - 5, by = top - 70, frac = f.hp / f.maxHp;       // health bar
