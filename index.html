@@ -77,6 +77,14 @@
   .tdb:not(:disabled):hover { border-color: var(--gold); }
   .tdb.sel { border-color: var(--gold); background: #2e2620; }
   .tdb:disabled { opacity: .45; cursor: not-allowed; }
+  .tdm { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
+    font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .tdm small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
+  .tdm small.d { color: var(--muted); margin-top: 2px; }
+  .tdm:not(:disabled):hover { border-color: var(--gold); }
+  .tdm.sel { border-color: var(--gold); background: #2e2620; }
+  .tdm:disabled { opacity: .45; cursor: not-allowed; }
+  .modes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .tdu { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
     font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
   .tdu small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
@@ -237,8 +245,14 @@
       <button class="tdu" id="upDmg"></button><button class="tdu" id="upRate"></button>
       <button class="tdu" id="upClose">Close</button>
     </div>
+    <p class="help" style="margin:10px 0 6px;text-align:left">Target priority</p>
+    <div class="modes">
+      <button class="tdm" data-m="first"></button><button class="tdm" data-m="last"></button>
+      <button class="tdm" data-m="lowest"></button><button class="tdm" data-m="highest"></button>
+      <button class="tdm" data-m="lowhp"></button><button class="tdm" data-m="highhp"></button>
+    </div>
   </div>
-  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Tap a placed helper to upgrade it. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
 </section>
 
 <section id="tdEnd" class="screen">
@@ -1130,12 +1144,31 @@ const TD = (() => {
   const UP_COST = 5;
   const upMax = t => (t.type === "fast" ? 5 : 3);
   const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : t.type === "fast" ? Math.pow(0.75, t.lv.rate) : 1);
+  const MODES = {
+    first:   { name: "First",          desc: "Enemy in front" },
+    last:    { name: "Last",           desc: "Enemy at the back" },
+    lowest:  { name: "Lowest",         desc: "Weakest enemy type" },
+    highest: { name: "Highest",        desc: "Strongest enemy type" },
+    lowhp:   { name: "Lowest Health",  desc: "Least health left" },
+    highhp:  { name: "Highest Health", desc: "Most health left" }
+  };
+  // true when enemy a should be shot before enemy b under this mode; ties go to the enemy further along the path
+  function better(a, b, m) {
+    const front = a.s > b.s;
+    if (m === "first") return front;
+    if (m === "last") return a.s < b.s;
+    const byType = m === "lowest" || m === "highest";
+    const va = byType ? ENEMY[a.type].hp : a.hp;
+    const vb = byType ? ENEMY[b.type].hp : b.hp;
+    if (va === vb) return front;
+    return m === "lowest" || m === "lowhp" ? va < vb : va > vb;
+  }
   function target(t) {
     const T = TYPES[t.type];
     let best = null;
     for (const e of enemies) {
       if (e.dead || Math.hypot(e.x - t.x, e.y - t.y) > T.range) continue;
-      if (!best || e.s > best.s) best = e;                      // the enemy closest to your base goes first
+      if (!best || better(e, best, t.mode)) best = e;
     }
     return best;
   }
@@ -1181,7 +1214,7 @@ const TD = (() => {
     const T = TYPES[sel];
     if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
     coins -= T.cost; built++;
-    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, lv: { dmg: 0, rate: 0 } };
+    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", lv: { dmg: 0, rate: 0 } };
     selTower = -1;
     beep(660, 0.12, "triangle", 0.12, 990);
   });
@@ -1194,6 +1227,10 @@ const TD = (() => {
   }
   $("#upDmg").addEventListener("click", () => upgrade("dmg"));
   $("#upRate").addEventListener("click", () => upgrade("rate"));
+  $$(".tdm").forEach(b => b.addEventListener("click", () => {
+    const t = towers[selTower];
+    if (t) { t.mode = b.dataset.m; beep(560, 0.05, "square", 0.06); }
+  }));
   $("#upClose").addEventListener("click", () => { selTower = -1; });
   $("#tdStart").addEventListener("click", startWave);
   $("#tdSpeed").addEventListener("click", () => { speed = speed === 1 ? 2 : 1; });
@@ -1266,6 +1303,11 @@ const TD = (() => {
     panel.hidden = !st;
     if (st) {
       const sn = st.type === "sniper", fa = st.type === "fast", mx = st ? upMax(st) : 3;
+      $$(".tdm").forEach(b => {
+        const m = MODES[b.dataset.m], html = m.name + "<small class='d'>" + m.desc + "</small>";
+        if (b.dataset.h !== html) { b.innerHTML = html; b.dataset.h = html; }
+        b.classList.toggle("sel", st.mode === b.dataset.m);
+      });
       $("#tdPanelName").textContent = TYPES[st.type].name + (sn || fa ? "" : " · no upgrades yet");
       $("#upDmg").hidden = !sn; $("#upRate").hidden = !(sn || fa);
       if (sn || fa) {
