@@ -150,6 +150,11 @@
       <p>Press the glowing rock to climb. Miss it and your stickman falls. Harder levels have smaller rocks.</p>
       <div class="best" id="bestClimb"></div>
     </button>
+    <button class="card" data-go="htGame">
+      <canvas class="ico" data-ico="crosshair" width="12" height="12"></canvas><h3>Hit the Targets</h3>
+      <p>Shoot medium targets for 1 point. Small golden targets pop up at random and are worth 5.</p>
+      <div class="best" id="bestHit"></div>
+    </button>
     <button class="card" data-go="tap">
       <canvas class="ico" data-ico="target" width="12" height="12"></canvas><h3>Target Tap</h3>
       <p>Hit as many targets as you can in 20 seconds. They shrink the longer you survive.</p>
@@ -322,6 +327,25 @@
   </div>
 </section>
 
+<!-- HIT THE TARGETS -->
+<section id="htGame" class="screen">
+  <div class="hud"><span id="htScore">Score 0</span><span id="htTime">Time 30</span><span id="htAcc">Accuracy 0%</span></div>
+  <canvas id="hv" width="200" height="140"></canvas>
+  <p class="help">Click the targets. Normal targets are worth 1 point. The small golden ones are worth 5, but they vanish fast.</p>
+  <button class="btn alt" data-go="menu">Exit</button>
+</section>
+
+<section id="htEnd" class="screen">
+  <div class="summary">
+    <h2>Time's up!</h2>
+    <div class="big" id="htEndScore">0</div>
+    <div id="htEndNew" style="color:var(--green);min-height:1.4em"></div>
+    <table id="htEndTable"></table>
+    <button class="btn" id="htAgain">Play again</button>
+    <button class="btn alt" data-go="menu">Menu</button>
+  </div>
+</section>
+
 <!-- TARGET TAP -->
 <section id="tap" class="screen">
   <h2><canvas class="ico sm" data-ico="target" width="12" height="12"></canvas> Target Tap</h2>
@@ -359,6 +383,7 @@ function show(id) {
   if (id !== "sGame") Snow.stop();
   if (id !== "tdGame") TD.stop();
   if (id !== "mcGame") Climb.stop();
+  if (id !== "htGame") Hit.stop();
   if (id === "menu") refreshBest();
 }
 $$("[data-go]").forEach(b => b.addEventListener("click", () => {
@@ -375,6 +400,7 @@ function refreshBest() {
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
   const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
+  const hb = store.get("mm_hit", 0); $("#bestHit").textContent = hb ? "Best: " + hb + " points" : "";
   const cl = store.get("mm_climb", {});
   const cp = ["easy", "medium", "hard"].filter(d => cl[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + cl[d] + "m");
   $("#bestClimb").textContent = cp.length ? "Best: " + cp.join(" · ") : "";
@@ -1806,6 +1832,182 @@ const Climb = (() => {
 })();
 
 /* =====================================================
+   HIT THE TARGETS
+   ===================================================== */
+const Hit = (() => {
+  const cv = $("#hv"), ctx = cv.getContext("2d");
+  const W = 800, H = 560, PX = 4, TIME = 30, GROUND = 450;
+  const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
+  const NORMAL = { r: 36, life: 2.4, pts: 1 };      // medium targets
+  const GOLD = { r: 17, life: 1.5, pts: 5 };        // golden targets are smaller and quicker to vanish
+  const MAX_NORMAL = 3;
+
+  let running = false, raf = 0, prev = 0, endTimer = 0;
+  let targets, holes, parts, floats, score, hits, golds, misses, left, ready, goldT, flash, mouse, over;
+
+  function start() {
+    stop();
+    targets = []; holes = []; parts = []; floats = [];
+    score = 0; hits = 0; golds = 0; misses = 0; left = TIME; ready = 1.2; over = false;
+    goldT = 3 + Math.random() * 3; flash = 0; mouse = { x: W / 2, y: 260 };
+    show("htGame");
+    running = true; prev = performance.now();
+    loop();
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); clearTimeout(endTimer); }
+
+  function free(r) {
+    // a spot that doesn't overlap another target
+    for (let i = 0; i < 30; i++) {
+      const x = 70 + Math.random() * (W - 140), y = 120 + Math.random() * 290;
+      if (targets.every(t => Math.hypot(t.x - x, t.y - y) > t.r + r + 24)) return { x, y };
+    }
+    return null;
+  }
+  function spawn(gold) {
+    const T = gold ? GOLD : NORMAL, pos = free(T.r);
+    if (!pos) return;
+    targets.push({ x: pos.x, y: pos.y, r: T.r, gold, life: T.life, age: 0, pts: T.pts });
+    if (gold) beep(1200, 0.12, "triangle", 0.1, 1800);
+  }
+
+  function shoot(p) {
+    if (over || ready > 0) return;
+    flash = 0.1;
+    beep(160, 0.08, "square", 0.1, 60);
+    for (let i = targets.length - 1; i >= 0; i--) {
+      const t = targets[i];
+      if (Math.hypot(p.x - t.x, p.y - t.y) <= t.r) {
+        score += t.pts; hits++; if (t.gold) golds++;
+        floats.push({ x: t.x, y: t.y - t.r, txt: "+" + t.pts, life: 0.8, c: t.gold ? "#ffec27" : "#fff1e8" });
+        for (let k = 0; k < (t.gold ? 18 : 10); k++) parts.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 400, vy: -Math.random() * 300,
+          life: 0.5, r: 6, c: t.gold ? "#ffec27" : k % 2 ? "#ff004d" : "#fff1e8" });
+        targets.splice(i, 1);
+        if (t.gold) { beep(880, 0.1, "triangle", 0.15); setTimeout(() => beep(1320, 0.2, "triangle", 0.15), 80); }
+        else beep(520, 0.07, "triangle", 0.12, 760);
+        return;
+      }
+    }
+    misses++;
+    holes.push({ x: p.x, y: p.y, life: 0.8 });
+  }
+
+  /* ----- input ----- */
+  function pos(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+  }
+  cv.addEventListener("pointermove", e => { mouse = pos(e); });
+  cv.addEventListener("pointerdown", e => { mouse = pos(e); if (running) shoot(mouse); });
+  $("#htAgain").addEventListener("click", start);
+  $('[data-go="htGame"]').addEventListener("click", start);
+
+  /* ----- loop ----- */
+  function loop(ts = performance.now()) {
+    if (!running) return;
+    const dt = Math.min((ts - prev) / 1000 || 0.016, 0.05); prev = ts;
+    update(dt); draw(ts); hud();
+    raf = requestAnimationFrame(loop);
+  }
+  function update(dt) {
+    flash = Math.max(0, flash - dt);
+    if (ready > 0) ready -= dt;
+    else if (!over) {
+      left -= dt;
+      if (left <= 0) { left = 0; finish(); }
+      goldT -= dt;
+      if (goldT <= 0 && !targets.some(t => t.gold)) { spawn(true); goldT = 3 + Math.random() * 4; }   // golden targets show up at random
+      while (targets.filter(t => !t.gold).length < MAX_NORMAL && !over) { const n = targets.length; spawn(false); if (targets.length === n) break; }
+    }
+    targets.forEach(t => { t.age += dt; });
+    targets = targets.filter(t => t.age < t.life);
+    holes.forEach(h => { h.life -= dt; }); holes = holes.filter(h => h.life > 0);
+    parts.forEach(q => { q.vy += 900 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }); parts = parts.filter(q => q.life > 0);
+    floats.forEach(f => { f.y -= 60 * dt; f.life -= dt; }); floats = floats.filter(f => f.life > 0);
+  }
+  function finish() {
+    over = true; targets = [];
+    beep(500, 0.4, "triangle", 0.15, 250);
+    endTimer = setTimeout(() => {
+      stop();
+      const best = store.get("mm_hit", 0), isNew = score > best;
+      if (isNew) store.set("mm_hit", score);
+      const shots = hits + misses;
+      $("#htEndScore").textContent = score;
+      $("#htEndNew").textContent = isNew ? "New best!" : "Best: " + best;
+      $("#htEndTable").innerHTML = "<tr><td>Targets hit</td><td>" + hits + "</td></tr><tr><td>Golden hit</td><td>" + golds + "</td></tr>" +
+        "<tr><td>Misses</td><td>" + misses + "</td></tr><tr><td>Accuracy</td><td>" + (shots ? Math.round(100 * hits / shots) : 0) + "%</td></tr>";
+      show("htEnd");
+    }, 1200);
+  }
+  function hud() {
+    $("#htScore").textContent = "Score " + score;
+    $("#htTime").textContent = "Time " + Math.ceil(left);
+    const shots = hits + misses;
+    $("#htAcc").textContent = "Accuracy " + (shots ? Math.round(100 * hits / shots) : 0) + "%";
+  }
+
+  /* ----- drawing ----- */
+  function label(t, x, y, color, size = 32) {
+    ctx.font = size + "px " + FONT; ctx.textAlign = "center";
+    ctx.lineWidth = 8; ctx.lineJoin = "round"; ctx.strokeStyle = "#0f1b33"; ctx.strokeText(t, x, y);
+    ctx.fillStyle = color; ctx.fillText(t, x, y);
+  }
+  function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  function ring(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+  function drawTarget(t, now) {
+    const grow = Math.min(1, t.age / 0.15), r = t.r * (0.4 + 0.6 * grow);
+    const dying = t.life - t.age < 0.6 && Math.floor(now / 90) % 2 === 0;       // blinks just before it vanishes
+    if (dying) return;
+    ctx.fillStyle = "#5f574f"; ctx.fillRect(t.x - 3, t.y, 6, GROUND - t.y + 40);   // post
+    if (t.gold) {
+      ring(t.x, t.y, r + 4, "#222222"); ring(t.x, t.y, r, "#ffec27"); ring(t.x, t.y, r * 0.66, "#ffa300"); ring(t.x, t.y, r * 0.33, "#ffec27");
+      if (Math.floor(now / 120) % 2) { ctx.fillStyle = "#fff1e8"; ctx.fillRect(t.x + r, t.y - r - 6, 8, 8); ctx.fillRect(t.x - r - 8, t.y + r * 0.4, 8, 8); }
+    } else {
+      ring(t.x, t.y, r + 4, "#222222"); ring(t.x, t.y, r, "#fff1e8"); ring(t.x, t.y, r * 0.75, "#ff004d"); ring(t.x, t.y, r * 0.5, "#fff1e8"); ring(t.x, t.y, r * 0.25, "#ff004d");
+    }
+  }
+  function drawShooter() {
+    const x = W / 2, hip = GROUND + 60, neck = hip - 56, sx = x, sy = neck + 8;
+    const dx = mouse.x - sx, dy = mouse.y - sy, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+    ctx.save(); ctx.strokeStyle = "#fff1e8"; ctx.lineWidth = 8; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+    line(x - 18, hip + 40, x, hip); line(x + 18, hip + 40, x, hip); line(x, hip, x, sy);
+    ctx.beginPath(); ctx.arc(x, neck - 14, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "#ff004d"; line(x - 14, neck - 18, x + 14, neck - 18);
+    const gx = sx + ux * 46, gy = sy + uy * 46;                      // arm toward the pointer
+    ctx.strokeStyle = "#fff1e8"; line(sx, sy, gx, gy);
+    ctx.strokeStyle = "#222222"; ctx.lineWidth = 12; line(gx, gy, gx + ux * 30, gy + uy * 30);   // pistol
+    if (flash > 0) { ctx.fillStyle = "#ffec27"; ctx.beginPath(); ctx.arc(gx + ux * 42, gy + uy * 42, 14, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  function draw(now) {
+    ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0); ctx.imageSmoothingEnabled = false;
+    ["#6aa7d8", "#6aa7d8", "#9fd3ff", "#9fd3ff", "#e8f4ff"].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * GROUND / 5, W, GROUND / 5 + 1); });
+    ctx.fillStyle = "#008751"; ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(160, GROUND - 90); ctx.lineTo(340, GROUND); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(300, GROUND); ctx.lineTo(560, GROUND - 120); ctx.lineTo(800, GROUND); ctx.fill();
+    ctx.fillStyle = "#00e436"; ctx.fillRect(0, GROUND, W, H - GROUND);
+    ctx.fillStyle = "#008751"; for (let i = 0; i < 18; i++) ctx.fillRect(i * 46 + (i % 3) * 9, GROUND + 18 + (i % 4) * 22, 14, 8);
+    ctx.fillStyle = "#ab5236"; ctx.fillRect(0, GROUND - 6, W, 12);   // fence rail
+
+    targets.forEach(t => drawTarget(t, now));
+    holes.forEach(h => { ctx.fillStyle = "#0f1b33"; ctx.fillRect(h.x - 5, h.y - 5, 10, 10); });
+    drawShooter();
+    parts.forEach(q => { ctx.fillStyle = q.c; ctx.fillRect(q.x, q.y, q.r, q.r); });
+    floats.forEach(f => label(f.txt, f.x, f.y, f.c));
+    if (ready > 0) label("GET READY!", W / 2, 240, "#ffec27", 64);
+    if (over) label("TIME'S UP!", W / 2, 240, "#ff004d", 64);
+    // crosshair
+    ctx.strokeStyle = "#ff004d"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mouse.x - 24, mouse.y); ctx.lineTo(mouse.x - 6, mouse.y); ctx.moveTo(mouse.x + 6, mouse.y); ctx.lineTo(mouse.x + 24, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y - 24); ctx.lineTo(mouse.x, mouse.y - 6); ctx.moveTo(mouse.x, mouse.y + 6); ctx.lineTo(mouse.x, mouse.y + 24); ctx.stroke();
+    posterizeCanvas(cv, ctx);
+  }
+
+  return { start, stop };
+})();
+
+/* =====================================================
    TARGET TAP
    ===================================================== */
 const Tap = (() => {
@@ -1898,6 +2100,13 @@ const Tap = (() => {
     "kr.........."];
   function grid(name) {
     if (name === "katana") return KATANA;
+    if (name === "crosshair") {
+      const out = [];
+      for (let y = 0; y < 12; y++) { let r = ""; for (let x = 0; x < 12; x++) {
+        const d = Math.hypot(x - 5.5, y - 5.5), onCross = (x === 5 || x === 6 || y === 5 || y === 6);
+        r += (d > 4.2 && d < 5.7) || (onCross && d > 1.6 && d < 5.7) ? "y" : "."; } out.push(r); }
+      return out;
+    }
     if (name === "mountain") return [
       ".....WW.....", "....WWWW....", "...WWWWWW...", "...mmWWmm...", "..mmmmmmmm..", "..mmmnnmmm..",
       ".mmmmnnmmmm.", ".mmmmmmnmmm.", "mmmmnmmmmmmm", "mmmmmmmmnmmm", "mmnmmmmmmmmm", "nnnnnnnnnnnn"];
