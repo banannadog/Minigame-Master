@@ -1657,7 +1657,8 @@ const Climb = (() => {
   cv.addEventListener("pointerdown", e => {
     if (!running || state !== "climb") return;
     const p = pos(e), n = rocks[cur + 1];
-    if (Math.hypot(p.x - n.x, p.y - n.y) <= DIFF[diff].r + 4) grab();
+    const onSummit = cur + 1 === HOLDS && Math.abs(p.x - n.x) <= 100 && p.y >= n.y - 90 && p.y <= n.y + 24;   // the whole flag and platform count
+    if (onSummit || Math.hypot(p.x - n.x, p.y - n.y) <= DIFF[diff].r + 4) grab();
     else drop("You missed the rock");
   });
   $("#mcAgain").addEventListener("click", () => start(diff));
@@ -1737,6 +1738,7 @@ const Climb = (() => {
     for (let i = Math.max(0, cur - 1); i <= Math.min(HOLDS, cur + 4); i++) {
       const R = rocks[i], y = R.y - camY, next = i === cur + 1 && state === "climb";
       if (i === HOLDS) {                                                  // the summit
+        if (next) { const g = 8 + Math.sin(now / 160) * 4; ctx.fillStyle = "#ffec27"; ctx.fillRect(R.x - 90 - g, y - 90 - g, 180 + 2 * g, 120 + 2 * g); }
         ctx.fillStyle = "#e8f4ff"; ctx.fillRect(R.x - 90, y - 10, 180, 30);
         ctx.fillStyle = "#5f574f"; ctx.fillRect(R.x - 3, y - 80, 6, 72); ctx.fillStyle = "#ff004d"; ctx.fillRect(R.x + 3, y - 80, 36, 22);
         continue;
@@ -1755,6 +1757,7 @@ const Climb = (() => {
       ctx.fillStyle = f > 0.5 ? "#00e436" : f > 0.25 ? "#ffa300" : "#ff004d"; ctx.fillRect(100, 28, 600 * f, 20);
     }
     if (msgT > 0 && state === "climb") label(msg, W / 2, 110, "#ffec27");
+    else if (state === "climb" && cur + 1 === HOLDS) label("PRESS THE FLAG!", W / 2, 110, "#ffec27");
     if (state === "falling") label(Math.floor(tick * 6) % 2 ? "AAAAAH!" : "AAAH!", W / 2, 200, "#ff004d", 64);
     if (state === "won") label("SUMMIT!", W / 2, 200, "#ffc94a", 64);
     posterizeCanvas(cv, ctx);
