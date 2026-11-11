@@ -251,7 +251,8 @@
   <div id="tdPanel" class="tdpanel" hidden>
     <b id="tdPanelName"></b>
     <div class="shop">
-      <button class="tdu" id="upDmg"></button><button class="tdu" id="upRate"></button>
+      <button class="tdu" data-slot="0"></button><button class="tdu" data-slot="1"></button><button class="tdu" data-slot="2"></button>
+      <button class="tdu" data-slot="3"></button><button class="tdu" data-slot="4"></button>
       <button class="tdu" id="upClose">Close</button>
     </div>
     <p class="help" style="margin:10px 0 6px;text-align:left">Target priority</p>
@@ -261,7 +262,7 @@
       <button class="tdm" data-m="lowhp"></button><button class="tdm" data-m="highhp"></button>
     </div>
   </div>
-  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Blue squares are far slots for the Sniper and Cannonball stickman only. Tap a placed helper to upgrade it or choose who it targets. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
 </section>
 
 <section id="tdEnd" class="screen">
@@ -1082,7 +1083,9 @@ const TD = (() => {
   const TOTAL = CUM[CUM.length - 1];
   const PADS = [[150, 200], [150, 40], [190, 330], [340, 250], [410, 300], [480, 250], [640, 260], [740, 60],
                 [740, 230], [880, 60], [840, 240], [1020, 330], [1020, 520], [1030, 640], [900, 650], [790, 640],
-                [610, 650], [540, 480], [410, 470], [300, 470], [290, 650], [470, 650], [620, 470]];
+                [610, 650], [540, 480], [410, 470], [300, 470], [290, 650], [470, 650], [620, 470],
+                // far slots: sniper and cannonball only, flagged with a 1
+                [400, 50, 1], [420, 190, 1], [720, 360, 1], [1050, 230, 1], [820, 540, 1], [150, 520, 1], [150, 730, 1], [540, 780, 1]];
   const TYPES = {
     stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "3 damage, near enemies" },
     sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
@@ -1163,7 +1166,9 @@ const TD = (() => {
 
   /* ----- towers ----- */
   const UP_COST = 5;
-  const upMax = t => (t.type === "fast" ? 5 : 3);
+  const maxOf = (t, kind) => (t.type === "fast" && kind === "rate" ? 5 : 3);
+  const RANGE_STEP = { stick: 20, sniper: 60, fast: 20, wizard: 30, cannon: 40 };
+  const rangeOf = t => TYPES[t.type].range + RANGE_STEP[t.type] * t.lv.range;
   const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : t.type === "fast" ? Math.pow(0.75, t.lv.rate) : 1);
   const MODES = {
     first:   { name: "First",          desc: "Enemy in front" },
@@ -1188,7 +1193,7 @@ const TD = (() => {
     const T = TYPES[t.type];
     let best = null;
     for (const e of enemies) {
-      if (e.dead || Math.hypot(e.x - t.x, e.y - t.y) > T.range) continue;
+      if (e.dead || Math.hypot(e.x - t.x, e.y - t.y) > rangeOf(t)) continue;
       if (!best || better(e, best, t.mode)) best = e;
     }
     return best;
@@ -1206,15 +1211,16 @@ const TD = (() => {
       return;
     }
     let col = "#fff1e8", w = 6, life = 0.08;
-    if (t.type === "stick") { damage(e, 3); beep(220, 0.04, "square", 0.05); }
+    if (t.type === "stick") { damage(e, 3 + 2 * t.lv.dmg); beep(220, 0.04, "square", 0.05); }
     else if (t.type === "sniper") {
       damage(e, (dist <= 120 ? 6 : 4) + 2 * t.lv.dmg); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
     } else if (t.type === "fast") {
-      damage(e, 2); col = "#ffa300"; w = 4; life = 0.05;
+      damage(e, 2 + t.lv.dmg); col = "#ffa300"; w = 4; life = 0.05;
       if (t.snd <= 0) { beep(700, 0.03, "square", 0.04); t.snd = 0.1; }
     } else {
-      damage(e, 2); w = 10; life = 0.22;
-      if (t.ice) { e.slow = 2; col = "#29adff"; } else { e.burn = 2; e.burnT = 0; col = "#ff004d"; }
+      damage(e, 2 + t.lv.dmg); w = 10; life = 0.22;
+      if (t.ice) { e.slow = 2 + t.lv.slow; col = "#29adff"; }
+      else { e.burn = 2 + t.lv.burn; e.burnT = 0; e.burnDmg = 1 + t.lv.hot; col = "#ff004d"; }
       t.ice = !t.ice; beep(t.ice ? 500 : 330, 0.12, "triangle", 0.08, t.ice ? 800 : 200);
     }
     fx.push({ x1: mx, y1: my, x2: e.x, y2: e.y, life, c: col, w });
@@ -1241,25 +1247,38 @@ const TD = (() => {
     }
     if (t) { selTower = i; beep(500, 0.05, "square", 0.06); return; }
     const T = TYPES[sel];
+    if (P[2] && sel !== "sniper" && sel !== "cannon") { floats.push({ x: P[0], y: P[1] - 40, txt: "SNIPER / CANNON ONLY", life: 1.1, c: "#29adff" }); beep(120, 0.2, "square", 0.1); return; }
     if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
     coins -= T.cost; built++;
-    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", lv: { dmg: 0, rate: 0, size: 0 } };
+    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, mode: "first", lv: { dmg: 0, rate: 0, size: 0, range: 0, slow: 0, burn: 0, hot: 0 } };
     selTower = -1;
     beep(660, 0.12, "triangle", 0.12, 990);
   });
-  const kindsOf = t => (t.type === "sniper" ? ["dmg", "rate"] : t.type === "fast" ? ["rate"] : t.type === "cannon" ? ["dmg", "size"] : []);
-  const costOf = (t, kind) => (t.type === "cannon" ? (kind === "dmg" ? 20 : 30) : UP_COST);
+  const KINDS = { stick: ["dmg", "range"], sniper: ["dmg", "rate", "range"], fast: ["dmg", "rate", "range"],
+                  wizard: ["dmg", "range", "slow", "burn", "hot"], cannon: ["dmg", "size", "range"] };
+  const kindsOf = t => KINDS[t.type];
+  const costOf = (t, kind) => (t.type === "cannon" ? (kind === "dmg" ? 20 : kind === "size" ? 30 : 20) : UP_COST);
+  const UP_LABEL = { dmg: "DAMAGE UP", range: "RANGE UP", rate: "SPEED UP", size: "BIGGER BALL", slow: "LONGER SLOW", burn: "LONGER BURN", hot: "HOTTER BURN" };
+  // name and a line describing the helper's current value for each upgrade
+  function spec(t, k) {
+    const L = t.lv[k];
+    if (k === "dmg") return ["More damage", t.type === "sniper" ? "Far " + (4 + 2 * L) + " · Close " + (6 + 2 * L)
+      : t.type === "cannon" ? "Blast does " + (8 + 4 * L) : "Hits for " + ((t.type === "stick" ? 3 + 2 * L : 2 + L))];
+    if (k === "range") return ["Longer range", "Range " + rangeOf(t)];
+    if (k === "rate") return t.type === "fast" ? ["Faster shooting", "Shoots every " + Math.round(cdOf(t) * 1000) + "ms"] : ["Faster reload", "Shoots every " + cdOf(t).toFixed(2) + "s"];
+    if (k === "size") return ["Bigger cannonball", "Blast radius " + (60 + 25 * L)];
+    if (k === "slow") return ["Longer slow", "Slows for " + (2 + L) + "s"];
+    if (k === "burn") return ["Longer burn", "Burns for " + (2 + L) + "s"];
+    return ["Hotter burn", "Burn does " + (1 + L) + " per tick"];
+  }
   function upgrade(kind) {
     const t = towers[selTower];
-    if (!t || over || !kindsOf(t).includes(kind) || t.lv[kind] >= upMax(t) || pts < costOf(t, kind)) return;
+    if (!t || over || !kind || !kindsOf(t).includes(kind) || t.lv[kind] >= maxOf(t, kind) || pts < costOf(t, kind)) return;
     pts -= costOf(t, kind); t.lv[kind]++; beep(660, 0.12, "triangle", 0.15, 990);
-    floats.push({ x: t.x, y: t.y - 60, txt: kind === "dmg" ? "DAMAGE UP" : kind === "size" ? "BIGGER BALL" : "SPEED UP", life: 1, c: "#5ab0ff" });
+    floats.push({ x: t.x, y: t.y - 60, txt: UP_LABEL[kind], life: 1, c: "#5ab0ff" });
   }
-  $("#upDmg").addEventListener("click", () => upgrade("dmg"));
-  $("#upRate").addEventListener("click", () => upgrade(towers[selTower] && towers[selTower].type === "cannon" ? "size" : "rate"));
-  $$(".tdm").forEach(b => b.addEventListener("click", () => {
-    const t = towers[selTower];
-    if (t) { t.mode = b.dataset.m; beep(560, 0.05, "square", 0.06); }
+  $$("#tdPanel [data-slot]").forEach(b => b.addEventListener("click", () => {
+    const t = towers[selTower]; if (t) upgrade(kindsOf(t)[+b.dataset.slot]);
   }));
   $("#upClose").addEventListener("click", () => { selTower = -1; });
   $("#tdStart").addEventListener("click", startWave);
@@ -1294,7 +1313,7 @@ const TD = (() => {
     if (waveActive && queue.length) { spawnT -= dt; if (spawnT <= 0) { spawn(queue.shift()); spawnT = spawnGap; } }
     for (const e of enemies) {
       if (e.dead) continue;
-      if (e.burn > 0) { e.burn -= dt; e.burnT += dt; while (e.burnT >= 0.5) { e.burnT -= 0.5; damage(e, 1); } }
+      if (e.burn > 0) { e.burn -= dt; e.burnT += dt; while (e.burnT >= 0.5) { e.burnT -= 0.5; damage(e, e.burnDmg || 1); } }
       if (e.slow > 0) e.slow -= dt;
       e.s += ENEMY[e.type].spd * 1.3 * (e.slow > 0 ? 0.45 : 1) * dt;
       if (e.s >= TOTAL) {
@@ -1356,23 +1375,17 @@ const TD = (() => {
         if (b.dataset.h !== html) { b.innerHTML = html; b.dataset.h = html; }
         b.classList.toggle("sel", st.mode === b.dataset.m);
       });
-      const kinds = kindsOf(st), cn = st.type === "cannon", mx = upMax(st);
-      $("#tdPanelName").textContent = TYPES[st.type].name + (kinds.length ? "" : " · no upgrades yet");
-      $("#upDmg").hidden = !kinds.includes("dmg"); $("#upRate").hidden = !(kinds.includes("rate") || kinds.includes("size"));
-      const tail = (k, lv) => "<small>" + (lv >= mx ? "MAX" : costOf(st, k) + " points") + " · Lv " + lv + "/" + mx + "</small>";
-      let h1 = "", h2 = "", k2 = "rate";
-      if (st.type === "sniper" || cn) {
-        h1 = "More damage<small class='d'>" + (cn ? "Blast does " + (8 + 4 * st.lv.dmg) : "Far " + (4 + 2 * st.lv.dmg) + " · Close " + (6 + 2 * st.lv.dmg)) + "</small>" + tail("dmg", st.lv.dmg);
-      }
-      if (cn) { k2 = "size"; h2 = "Bigger cannonball<small class='d'>Blast radius " + (60 + 25 * st.lv.size) + "</small>" + tail("size", st.lv.size); }
-      else if (kinds.includes("rate")) {
-        const fa = st.type === "fast";
-        h2 = (fa ? "Faster shooting" : "Faster reload") + "<small class='d'>Shoots every " + (fa ? Math.round(cdOf(st) * 1000) + "ms" : cdOf(st).toFixed(2) + "s") + "</small>" + tail("rate", st.lv.rate);
-      }
-      if (panel.dataset.a !== h1) { $("#upDmg").innerHTML = h1; panel.dataset.a = h1; }
-      if (panel.dataset.b !== h2) { $("#upRate").innerHTML = h2; panel.dataset.b = h2; }
-      $("#upDmg").disabled = !kinds.includes("dmg") || pts < costOf(st, "dmg") || st.lv.dmg >= mx;
-      $("#upRate").disabled = pts < costOf(st, k2) || st.lv[k2] >= mx;
+      const kinds = kindsOf(st);
+      $("#tdPanelName").textContent = TYPES[st.type].name;
+      $$("#tdPanel [data-slot]").forEach(btn => {
+        const k = kinds[+btn.dataset.slot];
+        btn.hidden = !k;
+        if (!k) return;
+        const sp = spec(st, k), mx = maxOf(st, k), lv = st.lv[k];
+        const html = sp[0] + "<small class='d'>" + sp[1] + "</small><small>" + (lv >= mx ? "MAX" : costOf(st, k) + " points") + " · Lv " + lv + "/" + mx + "</small>";
+        if (btn.dataset.h !== html) { btn.innerHTML = html; btn.dataset.h = html; }
+        btn.disabled = lv >= mx || pts < costOf(st, k);
+      });
     }
     const sb = $("#tdStart");
     sb.disabled = waveActive || over;
@@ -1463,19 +1476,20 @@ const TD = (() => {
     PADS.forEach((q, i) => {
       const free = !towers[i], hot = hover === i, chosen = selTower === i;
       ctx.fillStyle = "#00522e"; ctx.fillRect(q[0] - 28, q[1] - 28, 56, 56);
-      ctx.fillStyle = chosen ? "#00e436" : hot ? "#ffec27" : "#c2c3c7"; ctx.fillRect(q[0] - 24, q[1] - 24, 48, 48);
+      ctx.fillStyle = chosen ? "#00e436" : hot ? "#ffec27" : q[2] ? "#29adff" : "#c2c3c7"; ctx.fillRect(q[0] - 24, q[1] - 24, 48, 48);
       ctx.fillStyle = free ? "#5f574f" : "#3a2b22"; ctx.fillRect(q[0] - 20, q[1] - 20, 40, 40);
     });
     // range ring on hover
     const ringAt = selTower >= 0 ? selTower : hover;
     if (ringAt >= 0 && sel !== "sell") {
       const q = PADS[ringAt], T = TYPES[towers[ringAt] ? towers[ringAt].type : sel];
-      ctx.strokeStyle = "#ffec27"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(q[0], q[1], T.range, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "#ffec27"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(q[0], q[1], towers[ringAt] ? rangeOf(towers[ringAt]) : T.range, 0, Math.PI * 2); ctx.stroke();
     }
     towers.forEach(t => {
       if (!t) return;
       drawTower(t);
-      for (let n = 0; n < t.lv.dmg + t.lv.rate + t.lv.size; n++) { ctx.fillStyle = "#5ab0ff"; ctx.fillRect(t.x - 24 + n * 10, t.y + 26, 8, 8); }   // upgrade pips
+      const total = Object.values(t.lv).reduce((x, y) => x + y, 0);
+      for (let n = 0; n < total; n++) { ctx.fillStyle = "#5ab0ff"; ctx.fillRect(t.x - 24 + (n % 5) * 10, t.y + 26 + Math.floor(n / 5) * 10, 8, 8); }   // upgrade pips
     });
     enemies.forEach(e => drawEnemy(e, now));
     balls.forEach(b => {
