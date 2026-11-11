@@ -112,6 +112,13 @@
   .stats b { font-size: .75rem; color: var(--ink); font-weight: 400; }
   .tdpanel { width: 100%; max-width: 800px; margin: 10px 0 0; }
   .tdpanel b { display: block; font-size: .7rem; color: var(--gold); margin-bottom: 8px; }
+  .diff.master { border-color: var(--gold); }
+  .diff:disabled, .diff.locked { opacity: .5; cursor: not-allowed; border-color: #3a322c; }
+  .goals { width: 100%; max-width: 820px; border-collapse: collapse; font-size: .6rem; line-height: 1.7; }
+  .goals th { color: var(--muted); text-align: left; font-weight: 400; padding: 6px; }
+  .goals td { padding: 8px 6px; border-top: 1px solid #3a322c; vertical-align: top; }
+  .goals td.ok { color: var(--green); }
+  .goals td.no { color: var(--muted); }
   /* side games */
   #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
     border: 2px solid #3a322c; border-radius: 0; overflow: hidden; touch-action: manipulation; }
@@ -132,6 +139,11 @@
 <section id="menu" class="screen active">
   <p class="sub">Pick a game. Beat your best scores.</p>
   <div class="cards">
+    <button class="card" data-go="mUnlock" style="border-color:var(--gold)">
+      <canvas class="ico" data-ico="crown" width="12" height="12"></canvas><h3>Master Mode</h3>
+      <p>Beat every mini game to unlock the Master difficulty.</p>
+      <div class="best" id="bestMaster"></div>
+    </button>
     <button class="card" data-go="katana">
       <canvas class="ico" data-ico="katana" width="12" height="12"></canvas><h3>Katana Slice</h3>
       <p>A box hangs from a rope. The rope snaps at a random moment. Slice the box before it lands.</p>
@@ -183,6 +195,7 @@
     <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:64px;height:64px"></span><br><small>Big box · x1 score</small></button>
     <button class="diff" data-d="medium"><b>Medium</b><span class="sq" style="width:40px;height:40px"></span><br><small>Smaller box · x1.5 score</small></button>
     <button class="diff" data-d="hard"><b>Hard</b><span class="sq" style="width:22px;height:22px"></span><br><small>Tiny box · x2 score</small></button>
+    <button class="diff master" data-d="master" disabled><b>Master</b><span class="sq" style="width:14px;height:14px"></span><br><small data-on="Smallest box · x3 score">Locked</small></button>
   </div>
   <p class="help">5 rounds. Wait for the rope to snap, then swipe through the box with your mouse or finger.
     Swiping before the rope breaks scores 0.<br>
@@ -220,6 +233,7 @@
     <button class="diff" data-d="easy"><b>Easy</b><small>A little bad at snowballs</small></button>
     <button class="diff" data-d="medium"><b>Medium</b><small>Good at snowballs</small></button>
     <button class="diff" data-d="hard"><b>Hard</b><small>Very good at snowballs</small></button>
+    <button class="diff master" data-d="master" disabled><b>Master</b><small data-on="Nearly perfect at snowballs">Locked</small></button>
   </div>
   <p class="help">Each round: spam SPAM (or the space bar) to make snowballs, press DONE, then aim with the mouse
     or finger and click to throw. A hit on the enemy base is worth 2 points. Spend points on upgrades.
@@ -310,6 +324,7 @@
     <button class="diff" data-d="easy"><b>Easy</b><span class="sq" style="width:56px;height:56px"></span><br><small>Big rocks</small></button>
     <button class="diff" data-d="medium"><b>Medium</b><span class="sq" style="width:42px;height:42px"></span><br><small>Smaller rocks</small></button>
     <button class="diff" data-d="hard"><b>Hard</b><span class="sq" style="width:26px;height:26px"></span><br><small>Tiny rocks</small></button>
+    <button class="diff master" data-d="master" disabled><b>Master</b><span class="sq" style="width:18px;height:18px"></span><br><small data-on="Smallest rocks · fast grip">Locked</small></button>
   </div>
   <p class="help">Each rock is 2 meters higher. The summit is at 120 meters. Your grip timer gets shorter as you climb.</p>
   <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
@@ -361,6 +376,7 @@
     <button class="diff" data-d="easy"><b>Easy</b><small>Normal pace · small rocks and cars</small></button>
     <button class="diff" data-d="medium"><b>Medium</b><small>Faster · bigger obstacles · tighter gaps</small></button>
     <button class="diff" data-d="hard"><b>Hard</b><small>Very fast · big obstacles · long combos</small></button>
+    <button class="diff master" data-d="master" disabled><b>Master</b><small data-on="Fastest · biggest obstacles · long combos">Locked</small></button>
   </div>
   <p class="help">Hold the jump for a higher leap. Cars and combos need a full-height jump.</p>
   <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
@@ -384,6 +400,16 @@
     <button class="btn alt" data-go="pkDiff">Change difficulty</button>
     <button class="btn alt" data-go="menu">Menu</button>
   </div>
+</section>
+
+<!-- MASTER MODE -->
+<section id="mUnlock" class="screen">
+  <h2><canvas class="ico sm" data-ico="crown" width="12" height="12"></canvas> Master Mode</h2>
+  <p class="sub" id="mSub"></p>
+  <table class="goals" id="mTable"></table>
+  <p class="help">Master is a fourth, harder difficulty in Katana Slice, Snow Fight, Mountain Climbing and Parkour Sprint.
+    Every goal is something you can do in one sitting, and your scores are saved, so progress is kept.</p>
+  <button class="btn alt" data-go="menu" style="margin-top:16px">Back</button>
 </section>
 
 <!-- TARGET TAP -->
@@ -425,6 +451,8 @@ function show(id) {
   if (id !== "mcGame") Climb.stop();
   if (id !== "htGame") Hit.stop();
   if (id !== "pkGame") Parkour.stop();
+  refreshMaster();
+  if (id === "mUnlock") renderUnlock();
   if (id === "menu") refreshBest();
 }
 $$("[data-go]").forEach(b => b.addEventListener("click", () => {
@@ -436,17 +464,17 @@ document.addEventListener("keydown", e => {   // Escape leaves any game
 });
 function refreshBest() {
   const k = store.get("mm_katana", {});
-  const parts = ["easy", "medium", "hard"].filter(d => k[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + k[d]);
+  const parts = ["easy", "medium", "hard", "master"].filter(d => k[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + k[d]);
   $("#bestKatana").textContent = parts.length ? "Best: " + parts.join(" · ") : "";
   const t = store.get("mm_tap", 0); $("#bestTap").textContent = t ? "Best: " + t + " hits" : "";
   const sw = store.get("mm_snow", {});
-  const sp = ["easy", "medium", "hard"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
+  const sp = ["easy", "medium", "hard", "master"].filter(d => sw[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + sw[d]);
   let pk = store.get("mm_parkour", {}); if (typeof pk === "number") pk = { easy: pk };      // older saves stored one number
-  const pkp = ["easy", "medium", "hard"].filter(d => pk[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + pk[d] + "m");
+  const pkp = ["easy", "medium", "hard", "master"].filter(d => pk[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + pk[d] + "m");
   $("#bestParkour").textContent = pkp.length ? "Best: " + pkp.join(" · ") : "";
   const hb = store.get("mm_hit", 0); $("#bestHit").textContent = hb ? "Best: " + hb + " points" : "";
   const cl = store.get("mm_climb", {});
-  const cp = ["easy", "medium", "hard"].filter(d => cl[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + cl[d] + "m");
+  const cp = ["easy", "medium", "hard", "master"].filter(d => cl[d]).map(d => d[0].toUpperCase() + d.slice(1) + " " + cl[d] + "m");
   $("#bestClimb").textContent = cp.length ? "Best: " + cp.join(" · ") : "";
   const tb = store.get("mm_td", 0); $("#bestTD").textContent = tb ? "Best: wave " + tb + " · score " + store.get("mm_td_score", 0) : "";
   $("#bestSnow").textContent = sp.length ? "Wins: " + sp.join(" · ") : "";
@@ -497,6 +525,45 @@ function posterizeCanvas(cv, ctx) {
   ctx.putImageData(img, 0, 0);
 }
 
+/* ---------- Master mode: unlocked by beating every mini game ---------- */
+const KATANA_MULT = { easy: 1, medium: 1.5, hard: 2, master: 3 };
+function masterGoals() {
+  const k = store.get("mm_katana", {}), sw = store.get("mm_snow", {}), cl = store.get("mm_climb", {});
+  let pk = store.get("mm_parkour", {}); if (typeof pk === "number") pk = { easy: pk };
+  // a perfect Katana run is five PERFECT rounds, which always totals 5000 x the difficulty multiplier
+  const ratio = Math.max(0, ...Object.keys(KATANA_MULT).map(d => (k[d] || 0) / (5000 * KATANA_MULT[d])));
+  const perfect = ratio >= 1;
+  const hardWins = Math.max(sw.hard || 0, sw.master || 0);
+  const climb = Math.max(cl.medium || 0, cl.hard || 0, cl.master || 0);
+  const park = Math.max(pk.hard || 0, pk.master || 0);
+  const td = store.get("mm_td", 0), hit = store.get("mm_hit", 0), tap = store.get("mm_tap", 0), mem = store.get("mm_mem", 0);
+  return [
+    { game: "Katana Slice", goal: "A perfect run: all 5 rounds PERFECT (200ms or faster)", now: perfect ? "Perfect run!" : "Best " + Math.round(ratio * 100) + "% of a perfect score", done: perfect },
+    { game: "Snow Fight", goal: "Beat the Hard bot", now: hardWins + (hardWins === 1 ? " win" : " wins"), done: hardWins > 0 },
+    { game: "Stick Defense", goal: "Clear wave 50", now: "Best wave " + td, done: td >= 50 },
+    { game: "Mountain Climbing", goal: "Reach the summit (120 m) on Medium or higher", now: "Best " + climb + " m", done: climb >= 120 },
+    { game: "Hit the Targets", goal: "Score 60 points", now: "Best " + hit, done: hit >= 60 },
+    { game: "Parkour Sprint", goal: "Run 500 m on Hard or higher", now: "Best " + park + " m", done: park >= 500 },
+    { game: "Target Tap", goal: "Hit 35 targets", now: "Best " + tap, done: tap >= 35 },
+    { game: "Pattern Memory", goal: "Clear level 10", now: "Best level " + mem, done: mem >= 10 }
+  ];
+}
+const masterUnlocked = () => masterGoals().every(g => g.done);
+function refreshMaster() {
+  const goals = masterGoals(), done = goals.filter(g => g.done).length, ok = done === goals.length;
+  $$(".diff[data-d=master]").forEach(b => {
+    b.disabled = !ok; b.classList.toggle("locked", !ok);
+    const sm = $("small", b); sm.textContent = ok ? sm.dataset.on : "Locked · beat every mini game (" + done + "/" + goals.length + ")";
+  });
+  $("#bestMaster").textContent = ok ? "Unlocked!" : "Locked · " + done + "/" + goals.length + " goals done";
+}
+function renderUnlock() {
+  const goals = masterGoals(), done = goals.filter(g => g.done).length;
+  $("#mSub").textContent = done === goals.length ? "Master mode is unlocked." : done + " of " + goals.length + " goals done. Finish them all to unlock Master.";
+  $("#mTable").innerHTML = "<tr><th>Game</th><th>Goal</th><th>Your best</th><th></th></tr>" +
+    goals.map(g => "<tr><td>" + g.game + "</td><td>" + g.goal + "</td><td>" + g.now + "</td><td class='" + (g.done ? "ok" : "no") + "'>" + (g.done ? "DONE" : "not yet") + "</td></tr>").join("");
+}
+
 /* =====================================================
    KATANA SLICE
    ===================================================== */
@@ -510,7 +577,8 @@ const Katana = (() => {
   const DIFFS = {
     easy:   { size: 170, mult: 1 },
     medium: { size: 100, mult: 1.5 },
-    hard:   { size: 54,  mult: 2 }
+    hard:   { size: 54,  mult: 2 },
+    master: { size: 36,  mult: 3 }
   };
   const TIERS = [
     { max: 200, name: "PERFECT!", pts: 1000, color: "#ffc94a" },
@@ -899,7 +967,7 @@ const Snow = (() => {
   const COST = { tall: 8, strong: 10, fast: 6, aim: 6, health: 7 }, MAXLV = 3, BUILD_TIME = 5, HIT_POINTS = 2;
   const DESC = { tall: "Blocks 1 hit every round", strong: "Hits do 20% less damage", fast: "More snowballs per press", aim: "Smaller aim circle", health: "+8 health, healed now" };
   const NAMES = { tall: "Taller base", strong: "Stronger base", fast: "Faster snowballs", aim: "Better aim", health: "More health" };
-  const BOTS = { easy: { balls: 5, spread: 95 }, medium: { balls: 7, spread: 60 }, hard: { balls: 9, spread: 38 } };
+  const BOTS = { easy: { balls: 5, spread: 95 }, medium: { balls: 7, spread: 60 }, hard: { balls: 9, spread: 38 }, master: { balls: 10, spread: 34 } };
   const SIDES = {
     me:  { x0: 170, x1: 260, man: 90,  dir: 1,  color: "#29adff" },
     bot: { x0: 540, x1: 630, man: 710, dir: -1, color: "#ff004d" }
@@ -1703,7 +1771,7 @@ const Climb = (() => {
   const W = 800, H = 560, PX = 4, HOLDS = 60, METERS = 2, START_Y = 480, HANG = 400;
   const FONT = "\"Press Start 2P\", \"Courier New\", monospace";
   // rock radius gets smaller on harder levels, and the grip timer runs out faster
-  const DIFF = { easy: { r: 40, t0: 2.4, tmin: 1.2 }, medium: { r: 30, t0: 2.3, tmin: 1.05 }, hard: { r: 19, t0: 2.0, tmin: 0.85 } };
+  const DIFF = { easy: { r: 40, t0: 2.4, tmin: 1.2 }, medium: { r: 30, t0: 2.3, tmin: 1.05 }, hard: { r: 19, t0: 2.0, tmin: 0.85 }, master: { r: 15, t0: 1.8, tmin: 0.8, span: 180 } };   // master: smallest rocks and a tight grip timer, but hops stay short enough to reach in time
   const WALL = ["#808080", "#b9803f", "#c9a66b", "#8a7a6a", "#e8f4ff"];   // gray at the base, then earthy, then snow
   const hash = n => { n = Math.imul(n ^ 61, 0x9e3779b1); n ^= n >>> 15; n = Math.imul(n, 0x85ebca6b); n ^= n >>> 13; return (n >>> 0) / 4294967296; };
 
@@ -1714,9 +1782,12 @@ const Climb = (() => {
 
   function start(d) {
     diff = d; rocks = [{ x: W / 2, y: START_Y }];
+    const span = DIFF[diff].span || 240;                                     // the widest sideways hop between two rocks
     for (let i = 1; i <= HOLDS; i++) {
       const a = rocks[i - 1];
-      rocks.push({ x: Math.max(110, Math.min(690, a.x + (Math.random() * 2 - 1) * 240)), y: a.y - (100 + Math.random() * 40) });
+      let x = a.x + (Math.random() * 2 - 1) * span;
+      x = i === HOLDS - 1 ? Math.max(W / 2 - span, Math.min(W / 2 + span, x)) : x;   // the summit sits in the middle, so the last rock stays within one hop of it
+      rocks.push({ x: Math.max(110, Math.min(690, x)), y: a.y - (100 + Math.random() * 40) });
     }
     rocks[HOLDS].x = W / 2;
     cur = 0; camY = rocks[0].y - HANG; state = "climb"; parts = []; fall = null; reason = ""; tick = 0;
@@ -2073,8 +2144,13 @@ const Parkour = (() => {
   const DIFF = {
     easy:   { base: 380, ramp: 5, cap: 520, gap: [0.9, 0.9],  carP: 0.42, car: [120, 60], rock: [56, 46], twoP: 0.3,  triP: 0,   comboP: 0 },
     medium: { base: 470, ramp: 6, cap: 600, gap: [0.8, 0.7],  carP: 0.5,  car: [130, 68], rock: [60, 52], twoP: 0.4,  triP: 0,   comboP: 0.12 },
-    hard:   { base: 560, ramp: 7, cap: 650, gap: [0.7, 0.55], carP: 0.56, car: [140, 76], rock: [64, 58], twoP: 0.35, triP: 0.2, comboP: 0.3 }
+    hard:   { base: 560, ramp: 7, cap: 650, gap: [0.7, 0.55], carP: 0.56, car: [140, 76], rock: [64, 58], twoP: 0.35, triP: 0.2, comboP: 0.3 },
+    master: { base: 650, ramp: 8, cap: 560, gap: [0.68, 0.5], carP: 0.6,  car: [150, 84], rock: [68, 60], twoP: 0.35, triP: 0.25, comboP: 0.35 }
   };
+  // Fairness: whatever the pace, every obstacle group leaves MIN_WINDOW seconds of timing slack for the jump (a full jump
+  // is airborne for AIR seconds), and consecutive groups are spaced so you can land and jump again with 2 x TAU to spare.
+  const AIR = 2 * JUMP / GRAV, MIN_WINDOW = 0.22, TAU = 0.06;
+  const airAbove = h => 2 * Math.sqrt(Math.max(0, JUMP * JUMP - 2 * GRAV * h)) / GRAV;     // seconds spent above height h in a full jump
   let diff = "easy";
   const bestFor = d => { let v = store.get("mm_parkour", {}); if (typeof v === "number") v = { easy: v }; return v[d] || 0; };
   const speedAt = time => DIFF[diff].base + Math.min(DIFF[diff].cap, time * DIFF[diff].ramp);
@@ -2125,19 +2201,29 @@ const Parkour = (() => {
     const D = DIFF[diff], rw = D.rock[0];
     return { type: "rock", x, rw, w: rw * n - (n - 1) * 2, h: D.rock[1], n, passed: false };
   }
+  function build(kind, x0) {
+    if (kind === "car") return [makeCar(x0)];
+    if (kind === "r1") return [makeRocks(x0, 1)];
+    if (kind === "r2") return [makeRocks(x0, 2)];
+    if (kind === "r3") return [makeRocks(x0, 3)];
+    const car = kind === "comboCR", first = car ? makeCar(x0) : makeRocks(x0, 1);
+    return [first, car ? makeRocks(x0 + first.w + 44, 1) : makeCar(x0 + first.w + 44)];
+  }
+  const span = list => list[list.length - 1].x + list[list.length - 1].w - list[0].x;
+  const slack = list => airAbove(Math.max(...list.map(o => o.h))) - (span(list) + 22) / speed;
   function spawn() {
     const D = DIFF[diff], x0 = W + 60;
     const car = Math.random() < D.carP + Math.min(0.15, t / 300);
-    const list = [];
-    if (Math.random() < D.comboP) {
-      // a combo: two obstacles close together, cleared with one long full-height jump
-      const first = car ? makeCar(x0) : makeRocks(x0, 1), second = car ? makeRocks(x0 + first.w + 44, 1) : makeCar(x0 + first.w + 44);
-      list.push(first, second);
-    } else if (car) list.push(makeCar(x0));
-    else { const r = Math.random(); list.push(makeRocks(x0, r < D.triP ? 3 : r < D.triP + D.twoP ? 2 : 1)); }
+    let kind;
+    if (Math.random() < D.comboP) kind = car ? "comboCR" : "comboRC";
+    else if (car) kind = "car";
+    else { const r = Math.random(); kind = r < D.triP ? "r3" : r < D.triP + D.twoP ? "r2" : "r1"; }
+    const easier = { comboCR: "car", comboRC: "car", r3: "r2", r2: "r1" };
+    let list = build(kind, x0);
+    while (slack(list) < MIN_WINDOW && easier[kind]) { kind = easier[kind]; list = build(kind, x0); }     // too tight at this pace: use a simpler group
     obs.push(...list);
-    const last = list[list.length - 1], total = last.x + last.w - x0;
-    nextGap = total + speed * (D.gap[0] + Math.random() * D.gap[1]);       // always room to land and jump again
+    const total = span(list), needed = AIR - total / speed + 2 * TAU + 0.05;                            // time to land and jump again
+    nextGap = total + speed * Math.max(D.gap[0] + Math.random() * D.gap[1], needed);
   }
 
   /* ----- loop ----- */
@@ -2400,6 +2486,9 @@ const Tap = (() => {
     "kr.........."];
   function grid(name) {
     if (name === "katana") return KATANA;
+    if (name === "crown") return [
+      "y....yy....y", "yy...yy...yy", "yyy.yyyy.yyy", "yyyyyyyyyyyy", "yyyyyyyyyyyy", "yyyyyyyyyyyy",
+      "yyyyyyyyyyyy", "yyyrryyrryyy", "yyyyyyyyyyyy", "............", "............", "............"];
     if (name === "runner") return [
       ".....WW.....", "....WWWW....", ".....WW.....", "...WWWWWW...", "..W..WW..W..", ".....WW.....",
       ".....WW.....", "....W..W....", "...W....W...", "..W......W..", "............", "iiiiiiiiiiii"];
@@ -2447,6 +2536,7 @@ const Tap = (() => {
 })();
 
 refreshBest();
+refreshMaster();
 </script>
 </body>
 </html>
