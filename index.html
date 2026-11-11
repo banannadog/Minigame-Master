@@ -77,6 +77,16 @@
   .tdb:not(:disabled):hover { border-color: var(--gold); }
   .tdb.sel { border-color: var(--gold); background: #2e2620; }
   .tdb:disabled { opacity: .45; cursor: not-allowed; }
+  .tdu { background: var(--panel); color: inherit; border: 2px solid #3a322c; padding: 10px; font: inherit;
+    font-size: .6rem; line-height: 1.6; cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+  .tdu small { display: block; color: var(--gold); margin-top: 4px; font-size: .55rem; }
+  .tdu small.d { color: var(--muted); margin-top: 2px; }
+  .tdu:not(:disabled):hover { border-color: var(--gold); }
+  .tdu.sel { border-color: var(--gold); background: #2e2620; }
+  .tdu:disabled { opacity: .45; cursor: not-allowed; }
+  [hidden] { display: none !important; }
+  .tdpanel { width: 100%; max-width: 800px; margin: 10px 0 0; }
+  .tdpanel b { display: block; font-size: .7rem; color: var(--gold); margin-bottom: 8px; }
   /* side games */
   #tapArea { position: relative; width: 100%; max-width: 800px; height: 420px; background: #1b1714;
     border: 2px solid #3a322c; border-radius: 0; overflow: hidden; touch-action: manipulation; }
@@ -209,7 +219,7 @@
 
 <!-- STICK DEFENSE -->
 <section id="tdGame" class="screen">
-  <div class="hud"><span id="tdWave">Wave 0/10</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 200</span></div>
+  <div class="hud"><span id="tdWave">Wave 0/10</span><span id="tdLives">Lives 15</span><span id="tdCoins">Coins 200</span><span id="tdPts">Points 0</span></div>
   <canvas id="tv" width="200" height="140"></canvas>
   <div class="actions">
     <button class="btn big" id="tdStart">START WAVE 1</button>
@@ -221,7 +231,14 @@
     <button class="tdb" data-t="fast"></button><button class="tdb" data-t="wizard"></button>
     <button class="tdb" data-t="sell"></button>
   </div>
-  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Kills earn coins.</p>
+  <div id="tdPanel" class="tdpanel" hidden>
+    <b id="tdPanelName"></b>
+    <div class="shop">
+      <button class="tdu" id="upDmg"></button><button class="tdu" id="upRate"></button>
+      <button class="tdu" id="upClose">Close</button>
+    </div>
+  </div>
+  <p class="help" id="tdHelp">Pick a helper, then click a square next to the path to place it. Tap a placed helper to upgrade it. Kills earn coins; every wave gives 2 points and every 5 kills give 10.</p>
 </section>
 
 <section id="tdEnd" class="screen">
@@ -1041,7 +1058,7 @@ const TD = (() => {
   const PADS = [[100, 200], [260, 200], [300, 345], [500, 200], [560, 350], [700, 260],
                 [700, 60], [320, 60], [100, 360], [450, 470], [190, 440], [420, 350]];
   const TYPES = {
-    stick:  { name: "Stickman",      cost: 40,  range: 100, cd: 0.5,  desc: "1 damage, near enemies" },
+    stick:  { name: "Stickman",      cost: 20,  range: 100, cd: 0.5,  desc: "1 damage, near enemies" },
     sniper: { name: "Sniper",        cost: 120, range: 450, cd: 1.6,  desc: "4 far · 6 close" },
     fast:   { name: "Fast stickman", cost: 220, range: 110, cd: 0.02, desc: "2 damage every 20ms" },
     wizard: { name: "Wizard",        cost: 150, range: 230, cd: 1.0,  desc: "2 dmg + slow or burn 2s" }
@@ -1056,7 +1073,7 @@ const TD = (() => {
 
   let running = false, raf = 0, prev = 0, endTimer = 0;
   let coins, lives, wave, waveActive, queue, spawnT, spawnGap, enemies, towers, fx, floats;
-  let kills, earned, built, speed, sel, hover, over, won, banner;
+  let kills, earned, built, speed, sel, hover, over, won, banner, pts, selTower;
 
   function pointAt(d) {
     let i = 1;
@@ -1068,7 +1085,7 @@ const TD = (() => {
   function start() {
     coins = 200; lives = 15; wave = 0; waveActive = false; queue = []; spawnT = 0; spawnGap = 1;
     enemies = []; towers = PADS.map(() => null); fx = []; floats = [];
-    kills = 0; earned = 0; built = 0; speed = 1; sel = "stick"; hover = -1; over = false; won = false; banner = "";
+    kills = 0; earned = 0; built = 0; pts = 0; selTower = -1; speed = 1; sel = "stick"; hover = -1; over = false; won = false; banner = "";
     show("tdGame");
     stop(); running = true; prev = performance.now();
     loop();
@@ -1101,6 +1118,7 @@ const TD = (() => {
     e.hp -= d;
     if (e.hp <= 0) {
       e.dead = true; kills++;
+      if (kills % 5 === 0) { pts += 10; floats.push({ x: e.x, y: e.y - 56, txt: "+10 PTS", life: 1.1, c: "#5ab0ff" }); beep(880, 0.18, "triangle", 0.15, 1320); }
       const r = ENEMY[e.type].rew; coins += r; earned += r;
       floats.push({ x: e.x, y: e.y - 30, txt: "+" + r, life: 0.8, c: "#ffc94a" });
       beep(520, 0.06, "triangle", 0.08, 900);
@@ -1108,6 +1126,8 @@ const TD = (() => {
   }
 
   /* ----- towers ----- */
+  const UP_COST = 5, UP_MAX = 3;
+  const cdOf = t => TYPES[t.type].cd * (t.type === "sniper" ? Math.pow(0.8, t.lv.rate) : 1);
   function target(t) {
     const T = TYPES[t.type];
     let best = null;
@@ -1124,7 +1144,7 @@ const TD = (() => {
     let col = "#fff1e8", w = 6, life = 0.08;
     if (t.type === "stick") { damage(e, 1); beep(220, 0.04, "square", 0.05); }
     else if (t.type === "sniper") {
-      damage(e, dist <= 120 ? 6 : 4); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
+      damage(e, (dist <= 120 ? 6 : 4) + 2 * t.lv.dmg); col = "#ffec27"; w = 8; life = 0.15; beep(110, 0.15, "sawtooth", 0.1, 60);
     } else if (t.type === "fast") {
       damage(e, 2); col = "#ffa300"; w = 4; life = 0.05;
       if (t.snd <= 0) { beep(700, 0.03, "square", 0.04); t.snd = 0.1; }
@@ -1147,21 +1167,31 @@ const TD = (() => {
   cv.addEventListener("pointerdown", ev => {
     if (!running || over) return;
     const i = padAt(pos(ev)); hover = i;
-    if (i < 0) return;
+    if (i < 0) { selTower = -1; return; }
     const P = PADS[i], t = towers[i];
     if (sel === "sell") {
       if (!t) return;
-      const refund = Math.floor(TYPES[t.type].cost * 0.6); coins += refund; towers[i] = null;
+      const refund = Math.floor(TYPES[t.type].cost * 0.6); coins += refund; towers[i] = null; if (selTower === i) selTower = -1;
       floats.push({ x: P[0], y: P[1] - 40, txt: "+" + refund, life: 0.8, c: "#ffc94a" }); beep(260, 0.1, "triangle", 0.1);
       return;
     }
-    if (t) { floats.push({ x: P[0], y: P[1] - 40, txt: "TAKEN", life: 0.7, c: "#ff004d" }); return; }
+    if (t) { selTower = i; beep(500, 0.05, "square", 0.06); return; }
     const T = TYPES[sel];
     if (coins < T.cost) { floats.push({ x: P[0], y: P[1] - 40, txt: "NEED " + T.cost, life: 0.9, c: "#ff004d" }); beep(120, 0.2, "square", 0.1); return; }
     coins -= T.cost; built++;
-    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0 };
+    towers[i] = { type: sel, x: P[0], y: P[1], cd: 0, face: 1, flash: 0, ice: true, snd: 0, lv: { dmg: 0, rate: 0 } };
+    selTower = -1;
     beep(660, 0.12, "triangle", 0.12, 990);
   });
+  function upgrade(kind) {
+    const t = towers[selTower];
+    if (!t || t.type !== "sniper" || over || pts < UP_COST || t.lv[kind] >= UP_MAX) return;
+    pts -= UP_COST; t.lv[kind]++; beep(660, 0.12, "triangle", 0.15, 990);
+    floats.push({ x: t.x, y: t.y - 60, txt: kind === "dmg" ? "DAMAGE UP" : "RELOAD UP", life: 1, c: "#5ab0ff" });
+  }
+  $("#upDmg").addEventListener("click", () => upgrade("dmg"));
+  $("#upRate").addEventListener("click", () => upgrade("rate"));
+  $("#upClose").addEventListener("click", () => { selTower = -1; });
   $("#tdStart").addEventListener("click", startWave);
   $("#tdSpeed").addEventListener("click", () => { speed = speed === 1 ? 2 : 1; });
   $$(".tdb").forEach(b => b.addEventListener("click", () => { sel = b.dataset.t; }));
@@ -1210,7 +1240,7 @@ const TD = (() => {
       while (t.cd <= 0 && guard++ < 8) {
         const e = target(t);
         if (!e) { t.cd = 0; break; }
-        fire(t, e); t.cd += TYPES[t.type].cd;
+        fire(t, e); t.cd += cdOf(t);
         if (e.dead) continue;
       }
     }
@@ -1218,7 +1248,7 @@ const TD = (() => {
     if (waveActive && !queue.length && !enemies.length && !over) {
       waveActive = false;
       if (wave >= WAVES) finish(true);
-      else { coins += 30; earned += 30; banner = "WAVE " + wave + " CLEARED +30"; beep(660, 0.2, "triangle", 0.15, 990); }
+      else { coins += 30; earned += 30; pts += 2; banner = "WAVE " + wave + " CLEARED +2 PTS"; beep(660, 0.2, "triangle", 0.15, 990); }
     }
     fx.forEach(f => { f.life -= dt; }); fx = fx.filter(f => f.life > 0);
     floats.forEach(f => { f.y -= 50 * dt; f.life -= dt; }); floats = floats.filter(f => f.life > 0);
@@ -1229,6 +1259,22 @@ const TD = (() => {
     $("#tdWave").textContent = "Wave " + wave + "/" + WAVES;
     $("#tdLives").textContent = "Lives " + lives;
     $("#tdCoins").textContent = "Coins " + coins;
+    $("#tdPts").textContent = "Points " + pts;
+    const st = selTower >= 0 ? towers[selTower] : null, panel = $("#tdPanel");
+    panel.hidden = !st;
+    if (st) {
+      const sn = st.type === "sniper";
+      $("#tdPanelName").textContent = TYPES[st.type].name + (sn ? "" : " · no upgrades yet");
+      $("#upDmg").hidden = $("#upRate").hidden = !sn;
+      if (sn) {
+        const h1 = "More damage<small class='d'>Far " + (4 + 2 * st.lv.dmg) + " · Close " + (6 + 2 * st.lv.dmg) + "</small><small>" + (st.lv.dmg >= UP_MAX ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.dmg + "/" + UP_MAX + "</small>";
+        const h2 = "Faster reload<small class='d'>Shoots every " + cdOf(st).toFixed(2) + "s</small><small>" + (st.lv.rate >= UP_MAX ? "MAX" : UP_COST + " points") + " · Lv " + st.lv.rate + "/" + UP_MAX + "</small>";
+        if (panel.dataset.a !== h1) { $("#upDmg").innerHTML = h1; panel.dataset.a = h1; }
+        if (panel.dataset.b !== h2) { $("#upRate").innerHTML = h2; panel.dataset.b = h2; }
+        $("#upDmg").disabled = pts < UP_COST || st.lv.dmg >= UP_MAX;
+        $("#upRate").disabled = pts < UP_COST || st.lv.rate >= UP_MAX;
+      }
+    }
     const sb = $("#tdStart");
     sb.disabled = waveActive || over;
     sb.textContent = waveActive ? "WAVE " + wave + "..." : "START WAVE " + Math.min(wave + 1, WAVES);
@@ -1311,17 +1357,22 @@ const TD = (() => {
     ctx.fillStyle = "#29adff"; ctx.fillRect(306, 494, 16, 16);
     // pads
     PADS.forEach((q, i) => {
-      const free = !towers[i], hot = hover === i;
+      const free = !towers[i], hot = hover === i, chosen = selTower === i;
       ctx.fillStyle = "#00522e"; ctx.fillRect(q[0] - 28, q[1] - 28, 56, 56);
-      ctx.fillStyle = hot ? "#ffec27" : "#c2c3c7"; ctx.fillRect(q[0] - 24, q[1] - 24, 48, 48);
+      ctx.fillStyle = chosen ? "#00e436" : hot ? "#ffec27" : "#c2c3c7"; ctx.fillRect(q[0] - 24, q[1] - 24, 48, 48);
       ctx.fillStyle = free ? "#5f574f" : "#3a2b22"; ctx.fillRect(q[0] - 20, q[1] - 20, 40, 40);
     });
     // range ring on hover
-    if (hover >= 0 && sel !== "sell") {
-      const q = PADS[hover], T = TYPES[towers[hover] ? towers[hover].type : sel];
+    const ringAt = selTower >= 0 ? selTower : hover;
+    if (ringAt >= 0 && sel !== "sell") {
+      const q = PADS[ringAt], T = TYPES[towers[ringAt] ? towers[ringAt].type : sel];
       ctx.strokeStyle = "#ffec27"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(q[0], q[1], T.range, 0, Math.PI * 2); ctx.stroke();
     }
-    towers.forEach(t => t && drawTower(t));
+    towers.forEach(t => {
+      if (!t) return;
+      drawTower(t);
+      for (let n = 0; n < t.lv.dmg + t.lv.rate; n++) { ctx.fillStyle = "#5ab0ff"; ctx.fillRect(t.x - 24 + n * 10, t.y + 26, 8, 8); }   // upgrade pips
+    });
     enemies.forEach(e => drawEnemy(e, now));
     fx.forEach(f => { ctx.strokeStyle = f.c; ctx.lineWidth = f.w; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke(); });
     floats.forEach(f => label(f.txt, f.x, f.y, f.c));
